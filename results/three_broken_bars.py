@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import time
 
 #Read the data and compute the FFT and DFT
-broken_directory = '../data/1_broken_bar/' #directory with data is located in the directory prior
+broken_directory = '../data/3_broken_bar/' #directory with data is located in the directory prior
 loads = [100,75,50,25] #all the available loads to test the algorithm
 fig_counter = 1 #counter to spawn new figures
 amp_times = [] #list to store computing time for amplitude-based algorithm
@@ -21,8 +21,8 @@ for load in loads:
 
     #Compute the sideband peaks based on the amplitude only
     t_init = time.time()
-    amp_sideband_peaks = dsp_utils.sideband_peak_finder(fft_data, fft_freqs, data.slip, data.fm) #find the sideband peaks
-    amp_times.append(time.time()-t_init)
+    amp_sideband_peaks = dsp_utils.sideband_peak_finder(fft_data, fft_freqs, data.slip, data.fm)  # find the sideband peaks
+    amp_times.append(time.time() - t_init)
 
     amp_peak_points = np.array([sideband_point[0] for sideband_point in amp_sideband_peaks]) #store the peaks
     amp_freq_points = np.array([sideband_point[1] for sideband_point in amp_sideband_peaks]) #store the frequencies
