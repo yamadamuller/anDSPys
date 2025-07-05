@@ -1,5 +1,5 @@
 import numpy as np
-from framework import electromag_utils
+from framework import electromag_utils, dsp_utils
 
 class SimuData:
     '''
@@ -44,3 +44,8 @@ class SimuData:
         #define some important electromagnetic variables
         self.nr = electromag_utils.compute_avg_rotor_speed(self.speed_motor, self.speed_time_grid, self.fm) #compute the avg rotor speed
         self.slip = electromag_utils.compute_slip(self.speed_motor, self.speed_time_grid, self.ns, self.nr) #compute the slip
+
+        #compute the spectrum of the current
+        self.fft_data_amp = dsp_utils.compute_FFT(self.i_motor) #compute the FFT
+        self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
+        self.fft_freqs = np.linspace(-self.fs / 2, self.fs / 2, len(self.i_motor)) #FFT frequencies based on the sampling

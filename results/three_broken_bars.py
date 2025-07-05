@@ -5,65 +5,67 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import time
 
+#Important runtime variables
+wind_size = 40 #size around each component peak
+ns = 1800 #synchronous speed [rpm]
+fm = 60 #fundamental frequency
+harm_comps = [1,5,7] #harmonic components
+
 #Read the data and compute the FFT and DFT
-broken_directory = '../data/3_broken_bar/' #directory with data is located in the directory prior
+directory = '../data/3_broken_bar/' #directory with data is located in the directory prior
+healthy_directory = '../data/healthy/' #directory with data is located in the directory prior
 loads = [100,75,50,25] #all the available loads to test the algorithm
 fig_counter = 1 #counter to spawn new figures
-amp_times = [] #list to store computing time for amplitude-based algorithm
-fofd_times = [] #list to store computing time for fofd-based algorithm
+proc_times = [] #list to append processing times per data
 
-#Iterative read the files and generate the output
 for load in loads:
-    data = file_csv.read(broken_directory, load, 1800) #read the current file linked to the load
-    fft_data = dsp_utils.compute_FFT(data.i_motor) #compute the FFT
-    fft_data = dsp_utils.apply_dB(fft_data) #convert from amplitude to dB
-    fft_freqs = np.arange(-data.fs/2, data.fs/2, data.Res) #frequencies based on the sampling
+    data_healthy = file_csv.read(healthy_directory, load, ns, fm) #organize the healthy output in a SimuData structure
+    data = file_csv.read(directory, load, ns, fm) #organize the output in a SimuData structure
 
-    #Compute the sideband peaks based on the amplitude only
     t_init = time.time()
-    amp_sideband_peaks = dsp_utils.sideband_peak_finder(fft_data, fft_freqs, data.slip, data.fm)  # find the sideband peaks
-    amp_times.append(time.time() - t_init)
-
-    amp_peak_points = np.array([sideband_point[0] for sideband_point in amp_sideband_peaks]) #store the peaks
-    amp_freq_points = np.array([sideband_point[1] for sideband_point in amp_sideband_peaks]) #store the frequencies
-
-    #Compute the sideband peaks based on the fdm
-    t_init = time.time()
-    fdm_sideband_peaks = dsp_utils.sideband_fdm_peak_finder(fft_data, fft_freqs, data.slip, data.load, data.fm)  # find the sideband peaks
-    fofd_times.append(time.time() - t_init)
-    fdm_peak_points = np.array([sideband_point[0] for sideband_point in fdm_sideband_peaks])  # store the peaks
-    fdm_freq_points = np.array([sideband_point[1] for sideband_point in fdm_sideband_peaks])  # store the frequencies
+    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, window_size=wind_size) #run the peak detection routine
+    proc_times.append(time.time() - t_init)
 
     leg = []
     plt.figure(fig_counter)
-    plt.subplot(2,1,1)
-    plt.plot(fft_freqs, fft_data)
-    plt.scatter(amp_freq_points, amp_peak_points, marker='x', color='black')
-    leg.append('Amplitude-based')
+    plt.subplot(3,1,1)
+    plt.plot(data_healthy.fft_freqs[data_healthy.fft_freqs>=0], data_healthy.fft_data_dB[data_healthy.fft_freqs>=0])
+    leg.append('healthy')
+    plt.plot(data.fft_freqs, data.fft_data_dB)
+    leg.append(f'{directory.split("/")[-2]}')
+    plt.scatter(peaks[0][:,0], peaks[0][:,1], marker='x', color='black')
+    leg.append('significant peaks')
     plt.title(f'Load percentage = {load}%')
+    plt.ylabel('Amplitude FFT [dB]')
+    plt.legend(leg)
+    plt.xlim([fm-int(wind_size/2), fm+int(wind_size/2)])
+    plt.grid()
+
+    plt.subplot(3,1,2)
+    plt.plot(data_healthy.fft_freqs[data_healthy.fft_freqs>=0], data_healthy.fft_data_dB[data_healthy.fft_freqs>=0])
+    leg.append('healthy')
+    plt.plot(data.fft_freqs, data.fft_data_dB)
+    leg.append(f'{directory.split("/")[-2]}')
+    plt.scatter(peaks[1][:,0], peaks[1][:,1], marker='x', color='black')
+    leg.append('significant peaks')
+    plt.ylabel('Amplitude FFT [dB]')
+    plt.legend(leg)
+    plt.xlim([int(5*fm)-int(wind_size/2), int(5*fm)+int(wind_size/2)])
+    plt.grid()
+
+    plt.subplot(3,1,3)
+    plt.plot(data_healthy.fft_freqs[data_healthy.fft_freqs>=0], data_healthy.fft_data_dB[data_healthy.fft_freqs>=0])
+    leg.append('healthy')
+    plt.plot(data.fft_freqs, data.fft_data_dB)
+    leg.append(f'{directory.split("/")[-2]}')
+    plt.scatter(peaks[2][:,0], peaks[2][:,1], marker='x', color='black')
+    leg.append('significant peaks')
     plt.xlabel('Frequency [Hz]')
     plt.ylabel('Amplitude FFT [dB]')
     plt.legend(leg)
-    plt.xlim([50, 70])
-    plt.ylim([-45, 35])
+    plt.xlim([int(7*fm)-int(wind_size/2), int(7*fm)+int(wind_size/2)])
     plt.grid()
 
-    leg = []
-    plt.subplot(2, 1, 2)
-    plt.plot(fft_freqs, fft_data)
-    plt.scatter(fdm_freq_points, fdm_peak_points, marker='x', color='black')
-    leg.append('FDM-based')
-    plt.title(f'Load percentage = {load}%')
-    plt.xlabel('Frequency [Hz]')
-    plt.ylabel('Amplitude FFT [dB]')
-    plt.legend(leg)
-    plt.xlim([50, 70])
-    plt.ylim([-45, 35])
-    plt.grid()
+    fig_counter += 1  # increase the figure counter
 
-    plt.show()
-
-    fig_counter += 1 #increase the figure counter
-
-print(f'Average computing time for amplitude-based algorithm = {np.mean(amp_times)}s')
-print(f'Average computing time for finite difference-based algorithm = {np.mean(fofd_times)}s')
+print(f'Average computing time for peak detection algorithm = {np.mean(proc_times)}s')
