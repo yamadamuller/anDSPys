@@ -275,3 +275,51 @@ def fft_significant_peaks(data, harm_components, window_size=None, window_limit=
         peaks_per_component.append(np.concat([lower_peaks, upper_peaks])) #concatenate the peaks
 
     return peaks_per_component
+
+def fft_IQM_per_harmonic(data, harm_components, spike_side=None, window_size=None, window_limit=None):
+    '''
+    :param data: framework.data_types.SimuData structure
+    :param harm_components: a list/array containing the harmonic components to iterate over
+    :param spike_side: which side of the harmonic spike to compute the IQM (None by default=left)
+    :param window_size: the size in Hz of the window around each harmonic component (None by default=50Hz)
+    :param window_limit: index to reduce the window on each side of the global maximum (None by default=0)
+    :return: the coordinates for the six most significant sideband peaks per harmonic component
+    len(output) = 3
+    output[n] = coordinates
+    len(coordinates) <= 6 -> [freq, magnitude]
+    '''
+    if type(data) != data_types.SimuData:
+        raise TypeError(f'[fft_peak_finder] data input must be a SimuData object!')
+    if not spike_side:
+        spike_side='left'
+    if(spike_side!='left')&(spike_side!='right'):
+        raise ValueError(f'[fft_IQM_per_harmonic] spike_side must be "left" or "right"!')
+    if not window_size:
+        window_size = 50 #window of 50 Hz around the harmonic spike
+    if not window_limit:
+        window_limit = 0 #set the index to zero, compute over all points
+
+    #Filter only positive values from the fft frequencies
+    freq_mask = data.fft_freqs>=0 #mask to filter negative frequencies
+    data.fft_freqs = data.fft_freqs[freq_mask] #filtered frequencies
+    data.fft_data_amp = data.fft_data_amp[freq_mask] #filtered magnitudes amplitude
+    data.fft_data_dB = data.fft_data_dB[freq_mask] #filtered magnitudes dB
+
+    #iterate over the harmonic components to find all the significant sideband peaks
+    iqm_per_component = [] #list to append the detected peaks for each harmonic component
+    for n in harm_components:
+        #Window the FFT signal around the peak of the harmonic component
+        n = data.fm*n #update the component as a ratio of the fundamental frequency
+        lower_idx = np.argmin(np.abs(data.fft_freqs-(n-int(window_size/2)))) #window limit on the left
+        upper_idx = np.argmin(np.abs(data.fft_freqs-(n+int(window_size/2)))) #window limit on the right
+        harm_idx = np.argmin(np.abs(data.fft_freqs-n)) #find the index of the harmonic component peak
+
+        # Find the peaks within the side defined by the boundary index (bound_idx)
+        if spike_side=='left':  # compute the peaks left of the component
+            wind_spectrum = data.fft_data_dB[lower_idx:harm_idx - int(window_limit)]
+        else:
+            wind_spectrum = data.fft_data_dB[harm_idx + int(window_limit):upper_idx]
+
+        iqm_per_component.append(apply_IQM(wind_spectrum)) #compute the IQM boundaries for the curve
+
+    return iqm_per_component
