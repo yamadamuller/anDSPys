@@ -23,7 +23,7 @@ for load in loads:
     data = file_csv.read(directory, load, ns, fm) #organize the output in a SimuData structure
 
     t_init = time.time()
-    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, window_size=wind_size) #run the peak detection routine
+    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, mag_threshold=-44, freq_threshold=0.2) #run the peak detection routine
     proc_times.append(time.time() - t_init)
 
     leg = []
@@ -34,32 +34,34 @@ for load in loads:
     plt.plot(data.fft_freqs, data.fft_data_dB)
     leg.append(f'{directory.split("/")[-2]}')
     plt.scatter(peaks[0][:,0], peaks[0][:,1], marker='x', color='black')
-    leg.append('significant peaks')
+    leg.append(f'significant peaks at {harm_comps[0]*data.fm} Hz')
     plt.title(f'Load percentage = {load}%')
     plt.ylabel('Amplitude FFT [dB]')
     plt.legend(leg)
     plt.xlim([fm-int(wind_size/2), fm+int(wind_size/2)])
     plt.grid()
 
+    leg = []
     plt.subplot(3,1,2)
     plt.plot(data_healthy.fft_freqs[data_healthy.fft_freqs>=0], data_healthy.fft_data_dB[data_healthy.fft_freqs>=0])
     leg.append('healthy')
     plt.plot(data.fft_freqs, data.fft_data_dB)
     leg.append(f'{directory.split("/")[-2]}')
     plt.scatter(peaks[1][:,0], peaks[1][:,1], marker='x', color='black')
-    leg.append('significant peaks')
+    leg.append(f'significant peaks at {harm_comps[1]*data.fm} Hz')
     plt.ylabel('Amplitude FFT [dB]')
     plt.legend(leg)
     plt.xlim([int(5*fm)-int(wind_size/2), int(5*fm)+int(wind_size/2)])
     plt.grid()
 
+    leg = []
     plt.subplot(3,1,3)
     plt.plot(data_healthy.fft_freqs[data_healthy.fft_freqs>=0], data_healthy.fft_data_dB[data_healthy.fft_freqs>=0])
     leg.append('healthy')
     plt.plot(data.fft_freqs, data.fft_data_dB)
     leg.append(f'{directory.split("/")[-2]}')
     plt.scatter(peaks[2][:,0], peaks[2][:,1], marker='x', color='black')
-    leg.append('significant peaks')
+    leg.append(f'significant peaks at {harm_comps[2]*data.fm} Hz')
     plt.xlabel('Frequency [Hz]')
     plt.ylabel('Amplitude FFT [dB]')
     plt.legend(leg)

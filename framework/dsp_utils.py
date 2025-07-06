@@ -15,15 +15,34 @@ def apply_dB(signal):
     '''
     return 20*np.log10(np.abs(signal)+1e-8)
 
-def apply_stat_filt(signal, filter_function):
+def apply_IQM(signal):
+    '''
+    :param signal: the array with the signal to be computed both upper and lower limits of the IQR
+    :return: Q1-(1.5*IQR), Q3+(1.5*IQR)
+    '''
+    Q1 = np.percentile(signal, 25) #first quantile (below 25%)
+    Q3 = np.percentile(signal, 75) #third quantile (above 75%)
+    IQR = Q3-Q1 #inter-quantile range
+    lower = Q1-(1.5*IQR) #lower limit
+    upper = Q3+(1.5*IQR) #upper limit
+    return [lower, upper]
+
+def apply_stat_filt(signal, filter_function, abs=False):
     '''
     :param signal: the array with the signal to be filtered
     :param filter_function: which statitical function will be used to filter out values
-    :return: the filtered array
+    :param abs: flag to filter based on the absolute values of the signal
+    :return: the filtered array mask (values >= limit)
     '''
     stat_threshold = filter_function(signal) #statistcial component
-    signal[np.abs(signal)<=stat_threshold] = 0 #filter the values
-    return signal
+
+    if abs:
+        signal = np.abs(signal) #extract the absolute values
+
+    if type(stat_threshold) == list:
+        return(signal<=stat_threshold[0])&(signal<=stat_threshold[1])
+    else:
+        return signal>=stat_threshold
 
 def compute_FFT(signal, shift=True, normalize=True):
     '''
@@ -132,7 +151,7 @@ def backwards_num_spectrum_hessian(spectrum, eps=1):
     backwards2 = np.roll(spectrum, 2*eps) #lagged signal x[i-2]
     return (spectrum - 2*backward + backwards2)/(eps**2) #central finite difference (x[i+1] - 2*x[i] +x[i-1])/eps²
 
-def find_peaks(data, grad, hess, harm_component, harm_idx, bound_idx, window_limit=1, mag_threshold=-44, freq_threshold=0.2, max_peaks=3):
+def find_peaks(data, grad, hess, harm_component, harm_idx, bound_idx, window_limit=None, mag_threshold=None, freq_threshold=None, max_peaks=None, stat_filt=False, stat_func=np.mean):
     '''
     :param data: framework.data_types.SimuData structure
     :param grad: first order component of the FFT
@@ -140,10 +159,12 @@ def find_peaks(data, grad, hess, harm_component, harm_idx, bound_idx, window_lim
     :param harm_component: the harmonic component
     :param harm_idx: the index of the peak of the FFT magnitude
     :param bound_idx: the index of the boundary of the window (lower or upper)
-    :param window_limit: index to reduce the window on each side of the global maximum
-    :param mag_threshold: threshold for magnitude values of the FFT [dB]
-    :param max_peaks: the maximum number of significant peaks to extract
+    :param window_limit: index to reduce the window on each side of the global maximum (None by default=0)
+    :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-80dB)
     :param freq_threshold: threshold for frequency values below/above n+-threshold
+    :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
+    :param stat_filt: flag to filter smaller values in the FFT than the given stat_func output
+    :param stat_func: which function to compute in order to filter out small values (mean by default)
     :return: the coordinates for the six most significant sideband peaks of the computed harmonic component
     output[n] = coordinates -> [freqs, magnitudes]
     '''
@@ -151,6 +172,14 @@ def find_peaks(data, grad, hess, harm_component, harm_idx, bound_idx, window_lim
         raise TypeError(f'[find_peaks] data input must be a SimuData object!')
     if harm_idx == bound_idx:
         raise ValueError(f'[find_peaks] harm_idx and bound_idx must not be the same!')
+    if not window_limit:
+        window_limit = 0 #set the index to zero, compute over all points
+    if not mag_threshold:
+        mag_threshold = -80 #find where the FFT lies above -80 dB
+    if not freq_threshold:
+        freq_threshold = 0 #detect any peak as close as possible from the harmonic spike
+    if not stat_func:
+        stat_func = np.mean #in case stat_func is passed as None
 
     #Find the peaks within the side defined by the boundary index (bound_idx)
     if bound_idx < harm_idx: #compute the peaks left of the component
@@ -167,7 +196,7 @@ def find_peaks(data, grad, hess, harm_component, harm_idx, bound_idx, window_lim
         freq_thresh_mask = wind_freqs>=(harm_component+freq_threshold) #avoid detecting peaks close to the component spike
 
     #Evaluate signal change in the first derivative to infer local maxima
-    wind_grad = apply_stat_filt(wind_grad, np.mean) #filter out small gradient values that might indicate significant peaks close to the spike
+    wind_grad[~apply_stat_filt(wind_grad, np.mean, abs=True)] = 0 #filter out small gradient values that might indicate significant peaks close to the spike
     grad_sign = np.sign(wind_grad) #compute the signs of each value of the first derivative
     grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
 
@@ -177,20 +206,31 @@ def find_peaks(data, grad, hess, harm_component, harm_idx, bound_idx, window_lim
     peaks_mask = sign_change_mask&mag_thresh_mask&freq_thresh_mask #logic operation to define where all three masks are valid
     peaks = np.stack((wind_freqs[peaks_mask], wind_spectrum[peaks_mask]),axis=1) #stack the peaks as [freqs, coordinates]
 
-    if len(peaks) > max_peaks:
-        return peaks[-max_peaks:]
+    if stat_filt:
+        #filter out small peak values that might indicate significant peaks close to the spike
+        stat_mask = apply_stat_filt(peaks[:,0], stat_func)
+        peaks = peaks[stat_mask,:]
+
+    if max_peaks:
+        if len(peaks) >= max_peaks:
+            return peaks[-max_peaks:]
+        else:
+            raise ValueError (f'[find_peaks] length of the peaks matrix is smaller than max_peaks!')
     else:
         return peaks
 
 
-def fft_significant_peaks(data, harm_components, window_size=40, window_limit=1):
+def fft_significant_peaks(data, harm_components, window_size=None, window_limit=None, mag_threshold=None, freq_threshold=None, max_peaks=None, stat_filt=False, stat_func=np.mean):
     '''
     :param data: framework.data_types.SimuData structure
     :param harm_components: a list/array containing the harmonic components to iterate over
-    :param window_size: the size in Hz of the window around each harmonic component
-    :param window_limit: index to reduce the window on each side of the global maximum
-    :param mag_threshold: threshold for magnitude values of the FFT [dB]
+    :param window_size: the size in Hz of the window around each harmonic component (None by default=50Hz)
+    :param window_limit: index to reduce the window on each side of the global maximum (None by default=0)
+    :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-80dB)
     :param freq_threshold: threshold for frequency values below/above n+-threshold
+    :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
+    :param stat_filt: flag to filter smaller values in the FFT than the given stat_func output
+    :param stat_func: which function to compute in order to filter out small values (mean by default)
     :return: the coordinates for the six most significant sideband peaks per harmonic component
     len(output) = 3
     output[n] = coordinates
@@ -198,6 +238,16 @@ def fft_significant_peaks(data, harm_components, window_size=40, window_limit=1)
     '''
     if type(data) != data_types.SimuData:
         raise TypeError(f'[fft_peak_finder] data input must be a SimuData object!')
+    if not window_size:
+        window_size = 50 #window of 50 Hz around the harmonic spike
+    if not window_limit:
+        window_limit = 0 #set the index to zero, compute over all points
+    if not mag_threshold:
+        mag_threshold = -80 #find where the FFT lies above -80 dB
+    if not freq_threshold:
+        freq_threshold = 0 #detect any peak as close as possible from the harmonic spike
+    if not stat_func:
+        stat_func = np.mean #in case stat_func is passed as None
 
     #Filter only positive values from the fft frequencies
     freq_mask = data.fft_freqs>=0 #mask to filter negative frequencies
@@ -219,7 +269,8 @@ def fft_significant_peaks(data, harm_components, window_size=40, window_limit=1)
         harm_idx = np.argmin(np.abs(data.fft_freqs-n)) #find the index of the harmonic component peak
 
         #extract the peaks for both window sides
-        lower_peaks = find_peaks(data, fofd, sofd, n, harm_idx, lower_idx, window_limit=window_limit) #left side of the spike
+        lower_peaks = find_peaks(data, fofd, sofd, n, harm_idx, lower_idx, window_limit=window_limit, mag_threshold=mag_threshold,
+                                 freq_threshold=freq_threshold, max_peaks=max_peaks, stat_filt=stat_filt, stat_func=stat_func) #left side of the spike
         upper_peaks = np.zeros_like(lower_peaks) #TODO: compute the peaks at the right side of the spike
         peaks_per_component.append(np.concat([lower_peaks, upper_peaks])) #concatenate the peaks
 
