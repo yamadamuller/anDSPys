@@ -15,17 +15,19 @@ def apply_dB(signal):
     '''
     return 20*np.log10(np.abs(signal)+1e-8)
 
-def apply_IQM(signal):
+def apply_moving_filter(signal, stat_func, window_size):
     '''
-    :param signal: the array with the signal to be computed both upper and lower limits of the IQR
-    :return: Q1-(1.5*IQR), Q3+(1.5*IQR)
+    :param signal: the array with the signal to apply a moving filter operation
+    :param stat_func: the function that will be applied to the slidding window
+    :param window_size: size of the sliding window
+    :return: the signal filtered by the sliding window
     '''
-    Q1 = np.percentile(signal, 25) #first quantile (below 25%)
-    Q3 = np.percentile(signal, 75) #third quantile (above 75%)
-    IQR = Q3-Q1 #inter-quantile range
-    lower = Q1-(1.5*IQR) #lower limit
-    upper = Q3+(1.5*IQR) #upper limit
-    return [lower, upper]
+    filtered_signal = np.zeros_like(signal)
+    signal = np.pad(signal, (window_size-1, 0)) #pad with zeros so every element in signal is computed
+    for sldwin in range(window_size-1, len(signal)):
+        filtered_signal[sldwin-window_size-1] = stat_func(signal[sldwin-window_size-1:sldwin+1]) #compute the moving filter
+
+    return filtered_signal
 
 def apply_stat_filt(signal, filter_function, abs=False):
     '''
@@ -196,7 +198,6 @@ def find_peaks(data, grad, hess, harm_component, harm_idx, bound_idx, window_lim
         freq_thresh_mask = wind_freqs>=(harm_component+freq_threshold) #avoid detecting peaks close to the component spike
 
     #Evaluate signal change in the first derivative to infer local maxima
-    wind_grad[~apply_stat_filt(wind_grad, np.mean, abs=True)] = 0 #filter out small gradient values that might indicate significant peaks close to the spike
     grad_sign = np.sign(wind_grad) #compute the signs of each value of the first derivative
     grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
 
@@ -279,13 +280,78 @@ def fft_significant_peaks(data, harm_components, window_size=None, window_limit=
 
     return peaks_per_component
 
-def fft_IQM_per_harmonic(data, harm_components, spike_side=None, window_size=None, window_limit=None):
+def dispersion_find_peaks(data, grad, harm_idx, bound_idx, kernel_size=None, disp_threshold=None, window_limit=None, mag_threshold=None, max_peaks=None):
+    '''
+    :param data: framework.data_types.SimuData structure
+    :param grad: first order component of the FFT
+    :param bound_idx: the index of the boundary of the window (lower or upper)
+    :param kernel_size: size of the moving average and std filter kernel (None by default=5)
+    :param disp_threshold: threshold for the difference between a peak and the moving average (None by default=2)
+    :param window_limit: index to reduce the window on each side of the global maximum (None by default=0)
+    :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-80dB)
+    :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
+    :return: the coordinates for the six most significant sideband peaks of the computed harmonic component
+    output[n] = coordinates -> [freqs, magnitudes]
+    '''
+    if type(data) != data_types.SimuData:
+        raise TypeError(f'[find_peaks] data input must be a SimuData object!')
+    if harm_idx == bound_idx:
+        raise ValueError(f'[find_peaks] harm_idx and bound_idx must not be the same!')
+    if not window_limit:
+        window_limit = 0 #set the index to zero, compute over all points
+    if not kernel_size:
+        kernel_size = 5 #set the moving filter kernel to 5x5
+    if not disp_threshold:
+        disp_threshold = 2 #set the difference threshold as two time the moving standart deviation
+    if not mag_threshold:
+        mag_threshold = -60 #set the magnitude threshold as -60dB
+
+    #Find the peaks within the side defined by the boundary index (bound_idx)
+    if bound_idx < harm_idx: #compute the peaks left of the component
+        wind_freqs = data.fft_freqs[bound_idx:harm_idx-int(window_limit)]
+        wind_spectrum = data.fft_data_dB[bound_idx:harm_idx-int(window_limit)]
+        wind_grad = grad[bound_idx:harm_idx-int(window_limit)]
+    else:
+        wind_freqs = data.fft_freqs[harm_idx+int(window_limit):bound_idx]
+        wind_spectrum = data.fft_data_dB[harm_idx+int(window_limit):bound_idx]
+        wind_grad = grad[harm_idx+int(window_limit):bound_idx]
+
+    #Compute the moving filters
+    mov_avg = np.convolve(wind_spectrum, np.ones(kernel_size)/kernel_size, mode='same') #moving average
+    mov_std = apply_moving_filter(wind_spectrum,np.std,kernel_size) #moving standart deviation
+
+    #Evaluate signal change in the first derivative to infer local maxima
+    grad_sign = np.sign(wind_grad) #compute the signs of each value of the first derivative
+    grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
+
+    #Extract the peaks
+    sign_change_mask = grad_sign_change == 0 #when the first derivative changes from + to -. the sum is 0
+    mag_thresh_mask = wind_spectrum>=mag_threshold #values of the FFT that surpass the magnitude threshold
+    sign_change_mask = sign_change_mask&mag_thresh_mask #update the mask where both prior masks are valid
+    raw_peaks = wind_spectrum[sign_change_mask] #every peak magnitude detected by the change of signal in the gradient
+    raw_freq_peaks = wind_freqs[sign_change_mask] #every peak frequency detected by the change of signal in the gradient
+    mov_dif = np.abs(raw_peaks-mov_avg[sign_change_mask]) #difference between a sample and the moving mean at its index
+    stat_peaks_mask = mov_dif>=disp_threshold*mov_std[sign_change_mask] #apply dispersion thresholding
+    peaks = np.stack((raw_freq_peaks[stat_peaks_mask], raw_peaks[stat_peaks_mask]),axis=1)  #stack the peaks as [freqs, coordinates]
+
+    if max_peaks:
+        if len(peaks) >= max_peaks:
+            return peaks[-max_peaks:]
+        else:
+            raise ValueError (f'[find_peaks] length of the peaks matrix is smaller than max_peaks!')
+    else:
+        return peaks
+
+def fft_dispersion_significant_peaks(data, harm_components, window_size=None, window_limit=None, kernel_size=None, disp_threshold=None, mag_threshold=None, max_peaks=None):
     '''
     :param data: framework.data_types.SimuData structure
     :param harm_components: a list/array containing the harmonic components to iterate over
-    :param spike_side: which side of the harmonic spike to compute the IQM (None by default=left)
     :param window_size: the size in Hz of the window around each harmonic component (None by default=50Hz)
     :param window_limit: index to reduce the window on each side of the global maximum (None by default=0)
+    :param kernel_size: size of the moving average and std filter kernel (None by default=5)
+    :param disp_threshold: threshold for the difference between a peak and the moving average (None by default=2)
+    :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-60dB)
+    :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
     :return: the coordinates for the six most significant sideband peaks per harmonic component
     len(output) = 3
     output[n] = coordinates
@@ -293,14 +359,16 @@ def fft_IQM_per_harmonic(data, harm_components, spike_side=None, window_size=Non
     '''
     if type(data) != data_types.SimuData:
         raise TypeError(f'[fft_peak_finder] data input must be a SimuData object!')
-    if not spike_side:
-        spike_side='left'
-    if(spike_side!='left')&(spike_side!='right'):
-        raise ValueError(f'[fft_IQM_per_harmonic] spike_side must be "left" or "right"!')
     if not window_size:
         window_size = 50 #window of 50 Hz around the harmonic spike
     if not window_limit:
         window_limit = 0 #set the index to zero, compute over all points
+    if not kernel_size:
+        kernel_size = 5 #set the moving filter kernel to 5x5
+    if not disp_threshold:
+        disp_threshold = 2 #set the difference threshold as two time the moving standart deviation
+    if not mag_threshold:
+        mag_threshold = -60 #set the magnitude threshold as -60dB
 
     #Filter only positive values from the fft frequencies
     freq_mask = data.fft_freqs>=0 #mask to filter negative frequencies
@@ -308,21 +376,22 @@ def fft_IQM_per_harmonic(data, harm_components, spike_side=None, window_size=Non
     data.fft_data_amp = data.fft_data_amp[freq_mask] #filtered magnitudes amplitude
     data.fft_data_dB = data.fft_data_dB[freq_mask] #filtered magnitudes dB
 
+    #Compute the first and second derivatives of the spectrum
+    fofd = dsp_utils.backwards_num_spectrum_gradient(data.fft_data_dB, eps=1) #backwards first order finite difference
+
     #iterate over the harmonic components to find all the significant sideband peaks
-    iqm_per_component = [] #list to append the detected peaks for each harmonic component
+    peaks_per_component = [] #list to append the detected peaks for each harmonic component
     for n in harm_components:
         #Window the FFT signal around the peak of the harmonic component
         n = data.fm*n #update the component as a ratio of the fundamental frequency
         lower_idx = np.argmin(np.abs(data.fft_freqs-(n-int(window_size/2)))) #window limit on the left
-        upper_idx = np.argmin(np.abs(data.fft_freqs-(n+int(window_size/2)))) #window limit on the right
+        #upper_idx = np.argmin(np.abs(data.fft_freqs-(n+int(window_size/2)))) #window limit on the right
         harm_idx = np.argmin(np.abs(data.fft_freqs-n)) #find the index of the harmonic component peak
 
-        # Find the peaks within the side defined by the boundary index (bound_idx)
-        if spike_side=='left':  # compute the peaks left of the component
-            wind_spectrum = data.fft_data_dB[lower_idx:harm_idx - int(window_limit)]
-        else:
-            wind_spectrum = data.fft_data_dB[harm_idx + int(window_limit):upper_idx]
+        #extract the peaks for both window sides
+        lower_peaks = dispersion_find_peaks(data, fofd, harm_idx, lower_idx, kernel_size=kernel_size,
+                                            disp_threshold=disp_threshold, mag_threshold=mag_threshold,
+                                            window_limit=window_limit, max_peaks=max_peaks) #left side of the spike
+        peaks_per_component.append(np.concat([lower_peaks, np.array([[data.fft_freqs[harm_idx],data.fft_data_dB[harm_idx]]])])) #concatenate the peaks
 
-        iqm_per_component.append(apply_IQM(wind_spectrum)) #compute the IQM boundaries for the curve
-
-    return iqm_per_component
+    return peaks_per_component
