@@ -10,6 +10,7 @@ wind_size = 40 #size around each component peak
 ns = 1800 #synchronous speed [rpm]
 fm = 60 #fundamental frequency
 harm_comps = [1,5,7] #harmonic components
+mags = [-25,-44,-44] #all the magnitude thresholds
 
 #Read the data and compute the FFT and DFT
 directory = '../data/2_broken_bar/' #directory with data is located in the directory prior
@@ -17,14 +18,16 @@ healthy_directory = '../data/healthy/' #directory with data is located in the di
 loads = [100,75,50,25] #all the available loads to test the algorithm
 fig_counter = 1 #counter to spawn new figures
 proc_times = [] #list to append processing times per data
-
+all_peaks = [] #list to append all peaks registered along the loads
 for load in loads:
     data_healthy = file_csv.read(healthy_directory, load, ns, fm) #organize the healthy output in a SimuData structure
     data = file_csv.read(directory, load, ns, fm) #organize the output in a SimuData structure
 
     t_init = time.time()
-    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, mag_threshold=-44, freq_threshold=0.2) #run the peak detection routine
+    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, mag_thresholds=mags, freq_threshold=0.2) #run the peak detection routine
     proc_times.append(time.time() - t_init)
+
+    all_peaks.append(peaks)  # store the peaks
 
     leg = []
     plt.figure(fig_counter)
@@ -71,3 +74,11 @@ for load in loads:
     fig_counter += 1  # increase the figure counter
 
 print(f'Average computing time for peak detection algorithm = {np.mean(proc_times)}s')
+
+#Convert the all peaks list into an array per load test
+peaks_per_load = [] #list to store the arrays
+for load_peaks in all_peaks:
+    curr_peaks = np.empty((1,2)) #empty array to concatenate iteratively
+    for harm_peak in load_peaks:
+        curr_peaks = np.concat([curr_peaks, harm_peak]) #concatenate each harmonic component peaks within the load data
+    peaks_per_load.append(curr_peaks[1:])

@@ -43,7 +43,7 @@ class SimuData:
 
         #define some important electromagnetic variables
         self.nr = electromag_utils.compute_avg_rotor_speed(self.speed_motor, self.speed_time_grid, self.fm) #compute the avg rotor speed
-        self.slip = electromag_utils.compute_slip(self.speed_motor, self.speed_time_grid, self.ns, self.nr) #compute the slip
+        self.slip = electromag_utils.compute_slip(self.ns, self.nr) #compute the slip
 
         #compute the spectrum of the current
         self.fft_data_amp = dsp_utils.compute_FFT(self.i_motor) #compute the FFT

@@ -219,14 +219,13 @@ def find_peaks(data, grad, hess, harm_component, harm_idx, bound_idx, window_lim
     else:
         return peaks
 
-
-def fft_significant_peaks(data, harm_components, window_size=None, window_limit=None, mag_threshold=None, freq_threshold=None, max_peaks=None, stat_filt=False, stat_func=np.mean):
+def fft_significant_peaks(data, harm_components, window_size=None, window_limit=None, mag_thresholds=None, freq_threshold=None, max_peaks=None, stat_filt=False, stat_func=np.mean):
     '''
     :param data: framework.data_types.SimuData structure
     :param harm_components: a list/array containing the harmonic components to iterate over
     :param window_size: the size in Hz of the window around each harmonic component (None by default=50Hz)
     :param window_limit: index to reduce the window on each side of the global maximum (None by default=0)
-    :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-80dB)
+    :param mag_thresholds: thresholds for magnitude values of the FFT [dB] at each harmonic component (None by default=-80dB)
     :param freq_threshold: threshold for frequency values below/above n+-threshold
     :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
     :param stat_filt: flag to filter smaller values in the FFT than the given stat_func output
@@ -242,8 +241,10 @@ def fft_significant_peaks(data, harm_components, window_size=None, window_limit=
         window_size = 50 #window of 50 Hz around the harmonic spike
     if not window_limit:
         window_limit = 0 #set the index to zero, compute over all points
-    if not mag_threshold:
-        mag_threshold = -80 #find where the FFT lies above -80 dB
+    if not mag_thresholds:
+        mag_thresholds = [-80, -80, -80] #find where the FFT lies above -80 dB
+    if len(mag_thresholds)!=len(harm_components):
+        raise ValueError(f'[fft_peak_finder] mag_thresholds and harm_components must have the same size!')
     if not freq_threshold:
         freq_threshold = 0 #detect any peak as close as possible from the harmonic spike
     if not stat_func:
@@ -261,18 +262,20 @@ def fft_significant_peaks(data, harm_components, window_size=None, window_limit=
 
     #iterate over the harmonic components to find all the significant sideband peaks
     peaks_per_component = [] #list to append the detected peaks for each harmonic component
+    local_thresholds = mag_thresholds.copy() #copy the threshold list
+    local_thresholds.reverse() #reverse the list to pop each element at a time
     for n in harm_components:
         #Window the FFT signal around the peak of the harmonic component
         n = data.fm*n #update the component as a ratio of the fundamental frequency
         lower_idx = np.argmin(np.abs(data.fft_freqs-(n-int(window_size/2)))) #window limit on the left
-        upper_idx = np.argmin(np.abs(data.fft_freqs-(n+int(window_size/2)))) #window limit on the right
+        #upper_idx = np.argmin(np.abs(data.fft_freqs-(n+int(window_size/2)))) #window limit on the right
         harm_idx = np.argmin(np.abs(data.fft_freqs-n)) #find the index of the harmonic component peak
 
         #extract the peaks for both window sides
-        lower_peaks = find_peaks(data, fofd, sofd, n, harm_idx, lower_idx, window_limit=window_limit, mag_threshold=mag_threshold,
+        lower_peaks = find_peaks(data, fofd, sofd, n, harm_idx, lower_idx, window_limit=window_limit, mag_threshold=local_thresholds.pop(),
                                  freq_threshold=freq_threshold, max_peaks=max_peaks, stat_filt=stat_filt, stat_func=stat_func) #left side of the spike
-        upper_peaks = np.zeros_like(lower_peaks) #TODO: compute the peaks at the right side of the spike
-        peaks_per_component.append(np.concat([lower_peaks, upper_peaks])) #concatenate the peaks
+        #upper_peaks = np.zeros_like(lower_peaks) #TODO: compute the peaks at the right side of the spike
+        peaks_per_component.append(np.concat([lower_peaks, np.array([[data.fft_freqs[harm_idx],data.fft_data_dB[harm_idx]]])])) #concatenate the peaks
 
     return peaks_per_component
 
