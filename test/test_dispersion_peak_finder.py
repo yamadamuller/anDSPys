@@ -23,7 +23,7 @@ for load in loads:
     data = file_csv.read(directory, load, ns, fm) #organize the output in a SimuData structure
 
     t_init = time.time()
-    peaks = dsp_utils.fft_dispersion_significant_peaks(data, harm_comps, kernel_size=9, disp_threshold=1.55, mag_threshold=-50) #run the peak detection routine
+    peaks = dsp_utils.fft_dispersion_significant_peaks(data, harm_comps, kernel_size=11, gamma=1.5, mag_threshold=-60) #run the peak detection routine
     proc_times.append(time.time() - t_init)
     all_peaks.append(peaks) #store the peaks
 

@@ -49,3 +49,9 @@ class SimuData:
         self.fft_data_amp = dsp_utils.compute_FFT(self.i_motor) #compute the FFT
         self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
         self.fft_freqs = np.linspace(-self.fs / 2, self.fs / 2, len(self.i_motor)) #FFT frequencies based on the sampling
+
+class PeakFinderData:
+    def __init__(self, fft_data_dB, fft_freqs, fofd):
+        self.fft_data_dB = fft_data_dB #store the fft spectrum in dB to avoid messing with the original data
+        self.fft_freqs = fft_freqs #store the fft freqs to avoid messing with the oringal data
+        self.fofd = fofd #store the gradient of the FFT (first order finite difference)
