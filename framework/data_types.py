@@ -51,7 +51,15 @@ class SimuData:
         self.fft_freqs = np.linspace(-self.fs / 2, self.fs / 2, len(self.i_motor)) #FFT frequencies based on the sampling
 
 class PeakFinderData:
-    def __init__(self, fft_data_dB, fft_freqs, fofd):
+    def __init__(self, fft_data_dB, fft_freqs, fofd, smooth_data=None, slip=None, fm=None):
         self.fft_data_dB = fft_data_dB #store the fft spectrum in dB to avoid messing with the original data
         self.fft_freqs = fft_freqs #store the fft freqs to avoid messing with the oringal data
         self.fofd = fofd #store the gradient of the FFT (first order finite difference)
+        self.smoothed = False #flag to monitor if the spectrumwas smoothed
+        if smooth_data is not None:
+            self.smoothed = True #update the smoothed flag
+            self.smooth_fft_data_dB = smooth_data #store the smoothed fft spectrum in dB
+        if slip is not None:
+            self.slip = slip #update the slip of the simulated machine
+        if fm is not None:
+            self.fm = fm #update the fundamental frequency of the simulated machine

@@ -1,6 +1,6 @@
 import numpy as np
 from framework import data_types, dsp_utils
-from scipy.signal import savgol_filter
+from scipy.ndimage import gaussian_filter1d
 
 def apply_autocontrast(signal):
     '''
@@ -154,134 +154,7 @@ def backwards_num_spectrum_hessian(spectrum, eps=1):
     backwards2 = np.roll(spectrum, 2*eps) #lagged signal x[i-2]
     return (spectrum - 2*backward + backwards2)/(eps**2) #central finite difference (x[i+1] - 2*x[i] +x[i-1])/eps²
 
-def find_peaks(data, grad, hess, harm_component, harm_idx, bound_idx, window_limit=None, mag_threshold=None, freq_threshold=None, max_peaks=None, stat_filt=False, stat_func=np.mean):
-    '''
-    :param data: framework.data_types.SimuData structure
-    :param grad: first order component of the FFT
-    :param hess: second order component of the FFT
-    :param harm_component: the harmonic component
-    :param harm_idx: the index of the peak of the FFT magnitude
-    :param bound_idx: the index of the boundary of the window (lower or upper)
-    :param window_limit: index to reduce the window on each side of the global maximum (None by default=0)
-    :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-80dB)
-    :param freq_threshold: threshold for frequency values below/above n+-threshold
-    :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
-    :param stat_filt: flag to filter smaller values in the FFT than the given stat_func output
-    :param stat_func: which function to compute in order to filter out small values (mean by default)
-    :return: the coordinates for the six most significant sideband peaks of the computed harmonic component
-    output[n] = coordinates -> [freqs, magnitudes]
-    '''
-    if type(data) != data_types.SimuData:
-        raise TypeError(f'[find_peaks] data input must be a SimuData object!')
-    if harm_idx == bound_idx:
-        raise ValueError(f'[find_peaks] harm_idx and bound_idx must not be the same!')
-    if not window_limit:
-        window_limit = 0 #set the index to zero, compute over all points
-    if not mag_threshold:
-        mag_threshold = -80 #find where the FFT lies above -80 dB
-    if not freq_threshold:
-        freq_threshold = 0 #detect any peak as close as possible from the harmonic spike
-    if not stat_func:
-        stat_func = np.mean #in case stat_func is passed as None
-
-    #Find the peaks within the side defined by the boundary index (bound_idx)
-    if bound_idx < harm_idx: #compute the peaks left of the component
-        wind_freqs = data.fft_freqs[bound_idx:harm_idx-int(window_limit)]
-        wind_spectrum = data.fft_data_dB[bound_idx:harm_idx-int(window_limit)]
-        wind_grad = grad[bound_idx:harm_idx-int(window_limit)]
-        wind_hess = hess[bound_idx:harm_idx-int(window_limit)]
-        freq_thresh_mask = wind_freqs<=(harm_component-freq_threshold) #avoid detecting peaks close to the component spike
-    else:
-        wind_freqs = data.fft_freqs[harm_idx+int(window_limit):bound_idx]
-        wind_spectrum = data.fft_data_dB[harm_idx+int(window_limit):bound_idx]
-        wind_grad = grad[harm_idx+int(window_limit):bound_idx]
-        wind_hess = hess[harm_idx+int(window_limit):bound_idx]
-        freq_thresh_mask = wind_freqs>=(harm_component+freq_threshold) #avoid detecting peaks close to the component spike
-
-    #Evaluate signal change in the first derivative to infer local maxima
-    grad_sign = np.sign(wind_grad) #compute the signs of each value of the first derivative
-    grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
-
-    #Extract the peaks
-    sign_change_mask = grad_sign_change == 0 #when the first derivative changes from + to -. the sum is 0
-    mag_thresh_mask = wind_spectrum >= mag_threshold #find where the FFT lies above a pre-defined threshold
-    peaks_mask = sign_change_mask&mag_thresh_mask&freq_thresh_mask #logic operation to define where all three masks are valid
-    peaks = np.stack((wind_freqs[peaks_mask], wind_spectrum[peaks_mask]),axis=1) #stack the peaks as [freqs, coordinates]
-
-    if stat_filt:
-        #filter out small peak values that might indicate significant peaks close to the spike
-        stat_mask = apply_stat_filt(peaks[:,0], stat_func)
-        peaks = peaks[stat_mask,:]
-
-    if max_peaks:
-        if len(peaks) >= max_peaks:
-            return peaks[-max_peaks:]
-        else:
-            raise ValueError (f'[find_peaks] length of the peaks matrix is smaller than max_peaks!')
-    else:
-        return peaks
-
-def fft_significant_peaks(data, harm_components, window_size=None, window_limit=None, mag_thresholds=None, freq_threshold=None, max_peaks=None, stat_filt=False, stat_func=np.mean):
-    '''
-    :param data: framework.data_types.SimuData structure
-    :param harm_components: a list/array containing the harmonic components to iterate over
-    :param window_size: the size in Hz of the window around each harmonic component (None by default=50Hz)
-    :param window_limit: index to reduce the window on each side of the global maximum (None by default=0)
-    :param mag_thresholds: thresholds for magnitude values of the FFT [dB] at each harmonic component (None by default=-80dB)
-    :param freq_threshold: threshold for frequency values below/above n+-threshold
-    :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
-    :param stat_filt: flag to filter smaller values in the FFT than the given stat_func output
-    :param stat_func: which function to compute in order to filter out small values (mean by default)
-    :return: the coordinates for the six most significant sideband peaks per harmonic component
-    len(output) = 3
-    output[n] = coordinates
-    len(coordinates) <= 6 -> [freq, magnitude]
-    '''
-    if type(data) != data_types.SimuData:
-        raise TypeError(f'[fft_peak_finder] data input must be a SimuData object!')
-    if not window_size:
-        window_size = 50 #window of 50 Hz around the harmonic spike
-    if not window_limit:
-        window_limit = 0 #set the index to zero, compute over all points
-    if not mag_thresholds:
-        mag_thresholds = [-80, -80, -80] #find where the FFT lies above -80 dB
-    if len(mag_thresholds)!=len(harm_components):
-        raise ValueError(f'[fft_peak_finder] mag_thresholds and harm_components must have the same size!')
-    if not freq_threshold:
-        freq_threshold = 0 #detect any peak as close as possible from the harmonic spike
-    if not stat_func:
-        stat_func = np.mean #in case stat_func is passed as None
-
-    #Filter only positive values from the fft frequencies
-    freq_mask = data.fft_freqs>=0 #mask to filter negative frequencies
-    data.fft_freqs = data.fft_freqs[freq_mask] #filtered frequencies
-    data.fft_data_amp = data.fft_data_amp[freq_mask] #filtered magnitudes amplitude
-    data.fft_data_dB = data.fft_data_dB[freq_mask] #filtered magnitudes dB
-
-    #Compute the first and second derivatives of the spectrum
-    fofd = dsp_utils.backwards_num_spectrum_gradient(data.fft_data_dB, eps=1) #backwards first order finite difference
-    sofd = dsp_utils.backwards_num_spectrum_hessian(data.fft_data_dB, eps=1) #backwards second order finite difference
-
-    #iterate over the harmonic components to find all the significant sideband peaks
-    peaks_per_component = [] #list to append the detected peaks for each harmonic component
-    local_thresholds = mag_thresholds.copy() #copy the threshold list
-    local_thresholds.reverse() #reverse the list to pop each element at a time
-    for n in harm_components:
-        #Window the FFT signal around the peak of the harmonic component
-        n = data.fm*n #update the component as a ratio of the fundamental frequency
-        lower_idx = np.argmin(np.abs(data.fft_freqs-(n-int(window_size/2)))) #window limit on the left
-        #upper_idx = np.argmin(np.abs(data.fft_freqs-(n+int(window_size/2)))) #window limit on the right
-        harm_idx = np.argmin(np.abs(data.fft_freqs-n)) #find the index of the harmonic component peak
-
-        #extract the peaks for both window sides
-        lower_peaks = find_peaks(data, fofd, sofd, n, harm_idx, lower_idx, window_limit=window_limit, mag_threshold=local_thresholds.pop(),
-                                 freq_threshold=freq_threshold, max_peaks=max_peaks, stat_filt=stat_filt, stat_func=stat_func) #left side of the spike
-        #upper_peaks = np.zeros_like(lower_peaks) #TODO: compute the peaks at the right side of the spike
-        peaks_per_component.append(np.concat([lower_peaks, np.array([[data.fft_freqs[harm_idx],data.fft_data_dB[harm_idx]]])])) #concatenate the peaks
-
-    return peaks_per_component
-
-def dispersion_find_peaks(data, lower_bound_idx, upper_bound_idx, kernel_size=None, gamma=None, mag_threshold=None, max_peaks=None, harm_component=None):
+def dispersion_find_peaks(data, lower_bound_idx, upper_bound_idx, kernel_size=None, gamma=None, mag_threshold=None, h_threshold=None, max_peaks=None, harm_component=None, valley=False):
     '''
     :param data: framework.data_types.PeakFinderData structure
     :param lower_bound_idx: the index of the boundary of the window (lower side)
@@ -289,8 +162,10 @@ def dispersion_find_peaks(data, lower_bound_idx, upper_bound_idx, kernel_size=No
     :param kernel_size: size of the moving average and std filter kernel (None by default=5)
     :param gamma: threshold for the difference between a peak and the moving average (None by default=1)
     :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-80dB)
+    :param h_threshold: threshold for peak height with respect to its neighboring sample (None by default=0dB)
     :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
     :param harm_component: the harmonic component to filter max peaks from (only used if max_peaks is not None)
+    :param valley: flag to add valleys in the peak detection
     :return: the coordinates for the six most significant sideband peaks of the computed harmonic component
     output[n] = coordinates -> [freqs, magnitudes]
     '''
@@ -298,64 +173,197 @@ def dispersion_find_peaks(data, lower_bound_idx, upper_bound_idx, kernel_size=No
         raise TypeError(f'[dispersion_find_peaks] data input must be a PeakFinderData object!')
     if lower_bound_idx == upper_bound_idx:
         raise ValueError(f'[dispersion_find_peaks] lower and upper boundary of the signal window must not be the same!')
-    if not kernel_size:
-        kernel_size = 5 #set the moving filter kernel to 5x5
-    if not gamma:
-        gamma = 1 #set the difference threshold as two time the moving standart deviation
     if not mag_threshold:
         mag_threshold = -60 #set the magnitude threshold as -60dB
+    if not h_threshold:
+        h_threshold = 0 #set the height threshold as 0dB
 
     #Find the peaks within the side defined by the boundary index (bound_idx)
-    wind_freqs = data.fft_freqs[lower_bound_idx:upper_bound_idx]
-    wind_spectrum = data.fft_data_dB[lower_bound_idx:upper_bound_idx]
-    wind_grad = data.fofd[lower_bound_idx:upper_bound_idx] #gradient of the spectrum (first order finite difference)
+    if not data.smoothed:
+        wind_freqs = data.fft_freqs[lower_bound_idx:upper_bound_idx]
+        wind_spectrum = data.fft_data_dB[lower_bound_idx:upper_bound_idx]
+        wind_grad = data.fofd[lower_bound_idx:upper_bound_idx] #gradient of the spectrum (first order finite difference)
+    else:
+        wind_freqs = data.fft_freqs[lower_bound_idx:upper_bound_idx]
+        wind_spectrum = data.smooth_fft_data_dB[lower_bound_idx:upper_bound_idx]
+        wind_spectrum_rough = data.fft_data_dB[lower_bound_idx:upper_bound_idx] #unsmoothed data to later extract amplitudes
+        wind_grad = data.fofd[lower_bound_idx:upper_bound_idx] #gradient of the spectrum (first order finite difference)
 
     #Compute the moving filters
-    mov_avg = np.convolve(wind_spectrum, np.ones(kernel_size)/kernel_size, mode='same') #moving average
-    mov_std = apply_moving_filter(wind_spectrum,np.std,kernel_size) #moving standard deviation
+    stat_filtering = False #flag to monitor if statistical peak filtering will be apllied
+    if (kernel_size is not None) & (gamma is not None):
+        mov_avg = np.convolve(wind_spectrum, np.ones(kernel_size)/kernel_size, mode='same') #moving average
+        mov_std = apply_moving_filter(wind_spectrum,np.std,kernel_size) #moving standard deviation
+        stat_filtering = True #set statistical filtering to True
+
+    #Compute lagged and advanced signals to avoid over-computing
+    lag_wind_spectrum = np.roll(wind_spectrum, 1) #lag the spectrum in one sample
+    adv_wind_spectrum = np.roll(wind_spectrum, -1) #advance the spectrum in one sample
 
     #Evaluate signal change in the first derivative to infer local maxima
     grad_sign = np.sign(wind_grad) #compute the signs of each value of the first derivative
     grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
 
     #Evaluate spectrum peaks based on its neighbourhood
-    wind_l_upeaks = wind_spectrum>np.roll(wind_spectrum, 1) #check if a sample up peak is greater than its left neighbour
-    wind_l_dpeaks = np.abs(wind_spectrum)>np.abs(np.roll(wind_spectrum, 1)) #check if a sample down peak is greater than its left neighbour
-    wind_r_upeaks = wind_spectrum>np.roll(wind_spectrum, -1) #check if a sample up peak is greater its right neighbour
-    wind_r_dpeaks = wind_spectrum>np.roll(wind_spectrum, -1) #check if a sample down peaks is greater its right neighbour
-    neighbour_mask = (wind_l_upeaks|wind_l_dpeaks)&(wind_r_upeaks|wind_r_dpeaks) #check for samples where the values are greater than its neighbour (both absolute and )
+    if not valley:
+        wind_l_upeaks = wind_spectrum>lag_wind_spectrum #check if a sample up peak is greater than its left neighbour
+        wind_r_upeaks = wind_spectrum>adv_wind_spectrum #check if a sample up peak is greater its right neighbour
+        neighbour_mask = wind_l_upeaks&wind_r_upeaks #check for samples where the values are greater than its neighbour and its an upeak
+    else:
+        wind_l_upeaks = wind_spectrum>lag_wind_spectrum  #check if a sample up peak is greater than its left neighbour
+        wind_l_dpeaks = np.abs(wind_spectrum)>np.abs(lag_wind_spectrum)  #check if a sample down peak is greater than its left neighbour
+        wind_r_upeaks = wind_spectrum>adv_wind_spectrum  #check if a sample up peak is greater its right neighbour
+        wind_r_dpeaks = np.abs(wind_spectrum)>np.abs(adv_wind_spectrum)  #check if a sample down peaks is greater its right neighbour
+        neighbour_mask = (wind_l_upeaks|wind_l_dpeaks)&(wind_r_upeaks|wind_r_dpeaks)  #check for samples where the values are greater than its neighbour
+
+    #Evaluate height change in the spectrum to infer local maxima
+    height_diff = np.abs(wind_spectrum-lag_wind_spectrum) #absolute value of the height change
+    height_mask = height_diff>=h_threshold #check for samples where its value is greater than its left neighbour
 
     #Extract the peaks
-    sign_change_mask = grad_sign_change == 0 #when the first derivative changes from + to -. the sum is 0
-    mag_thresh_mask = wind_spectrum>=mag_threshold #values of the FFT that surpass the magnitude threshold
-    sign_change_mask = neighbour_mask&sign_change_mask&mag_thresh_mask #update the mask where all prior masks are valid
-    raw_peaks = wind_spectrum[sign_change_mask] #every peak magnitude detected by the change of signal in the gradient
-    raw_freq_peaks = wind_freqs[sign_change_mask] #every peak frequency detected by the change of signal in the gradient
-    mov_dif = np.abs(raw_peaks-mov_avg[sign_change_mask]) #difference between a sample and the moving mean at its index
-    stat_peaks_mask = mov_dif>=gamma*mov_std[sign_change_mask] #apply dispersion thresholding
-    peaks = np.stack((raw_freq_peaks[stat_peaks_mask], raw_peaks[stat_peaks_mask]),axis=1)  #stack the peaks as [freqs, coordinates]
+    if not data.smoothed:
+        sign_change_mask = grad_sign_change == 0  #when the first derivative changes from + to -. the sum is 0
+        mag_thresh_mask = wind_spectrum >= mag_threshold  #values of the FFT that surpass the magnitude threshold
+        sign_change_mask = neighbour_mask & sign_change_mask & mag_thresh_mask & height_mask  #update the mask where all prior masks are valid
+        raw_peaks = wind_spectrum[sign_change_mask]  #every peak magnitude detected by the change of signal in the gradient
+        raw_freq_peaks = wind_freqs[sign_change_mask]  #every peak frequency detected by the change of signal in the gradient
+        if stat_filtering:
+            mov_dif = np.abs(raw_peaks - mov_avg[sign_change_mask])  #difference between a sample and the moving mean at its index
+            stat_peaks_mask = mov_dif >= gamma * mov_std[sign_change_mask]  #apply dispersion thresholding
+            peaks = np.stack((raw_freq_peaks[stat_peaks_mask], raw_peaks[stat_peaks_mask]),axis=1)  #stack the peaks as [freqs, coordinates]
+        else:
+            peaks = np.stack((raw_freq_peaks, raw_peaks), axis=1) #stack the peaks as [freqs, coordinates]
+    else:
+        #Extract the peaks
+        sign_change_mask = grad_sign_change == 0  #when the first derivative changes from + to -. the sum is 0
+        mag_thresh_mask = wind_spectrum >= mag_threshold  #values of the smoothed FFT that surpass the magnitude threshold
+        sign_change_mask = neighbour_mask & sign_change_mask & mag_thresh_mask & height_mask  #update the mask where all prior masks are valid
+        raw_peaks = wind_spectrum[sign_change_mask]  #every smoothed peak magnitude detected by the change of signal in the gradient
+        raw_peaks_rough = wind_spectrum_rough[sign_change_mask] #every unsmoothed peak magnitude detected by the change of signal in the gradient
+        raw_freq_peaks = wind_freqs[sign_change_mask]  #every peak frequency detected by the change of signal in the gradient
+        if stat_filtering:
+            mov_dif = np.abs(raw_peaks_rough - mov_avg[sign_change_mask])  #difference between a sample and the moving mean at its index
+            stat_peaks_mask = mov_dif >= gamma * mov_std[sign_change_mask]  #apply dispersion thresholding
+            peaks = np.stack((raw_freq_peaks[stat_peaks_mask], raw_peaks[stat_peaks_mask]), axis=1)  #stack the peaks as [freqs, coordinates]
+        else:
+            peaks = np.stack((raw_freq_peaks, raw_peaks), axis=1)  # stack the peaks as [freqs, coordinates]
 
     if max_peaks:
         if not harm_component:
             raise ValueError('[dispersion_find_peaks] To return the {max_peaks} peaks, a harmonic component must be provided!')
         if len(peaks) >= max_peaks:
-            harm_idx = np.argmin(np.abs(raw_freq_peaks[stat_peaks_mask]-harm_component))  # find the index of the harmonic component peak
+            if stat_filtering:
+                harm_idx = np.argmin(np.abs(raw_freq_peaks[stat_peaks_mask]-harm_component))  #find the index of the harmonic component peak
+            else:
+                harm_idx = np.argmin(np.abs(raw_freq_peaks-harm_component))  # find the index of the harmonic component peak
             return peaks[harm_idx-max_peaks:harm_idx+max_peaks+1] #return the max_peaks peaks on each side of the component
         else:
             raise ValueError(f'[dispersion_find_peaks] length of the peaks matrix is smaller than max_peaks!')
     else:
         return peaks
 
-def fft_dispersion_significant_peaks(data, harm_components, window_size=None, kernel_size=None, gamma=None, mag_threshold=None, max_peaks=None, smooth_kernel=None):
+def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=None, h_threshold=None, min_peak_dist=None, max_peaks=None, harm_component=None, valley=False):
+    '''
+    :param data: framework.data_types.PeakFinderData structure
+    :param lower_bound_idx: the index of the boundary of the window (lower side)
+    :param upper_bound_idx: the index of the boundary of the window (upper side)
+    :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-80dB)
+    :param h_threshold: threshold for peak height with respect to its neighboring sample (None by default=0dB)
+    :param min_peak_dist: filter for the tallest peaks distanced by at least the passed value (None by default=2.s.fm)
+    :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
+    :param harm_component: the harmonic component to filter max peaks from (only used if max_peaks is not None)
+    :param valley: flag to add valleys in the peak detection
+    :return: the coordinates for the six most significant sideband peaks of the computed harmonic component
+    output[n] = coordinates -> [freqs, magnitudes]
+    '''
+    if type(data) != data_types.PeakFinderData:
+        raise TypeError(f'[distance_find_peaks] data input must be a PeakFinderData object!')
+    if lower_bound_idx == upper_bound_idx:
+        raise ValueError(f'[distance_find_peaks] lower and upper boundary of the signal window must not be the same!')
+    if not mag_threshold:
+        mag_threshold = -60 #set the magnitude threshold as -60dB
+    if not h_threshold:
+        h_threshold = 0 #set the height threshold as 0dB
+    if not min_peak_dist:
+        min_peak_dist = 2*data.slip*data.fm #the expected distance between peaks given the slope (2.s.fm)
+
+    #Find the peaks within the side defined by the boundary index (bound_idx)
+    wind_freqs = data.fft_freqs[lower_bound_idx:upper_bound_idx]
+    wind_spectrum = data.fft_data_dB[lower_bound_idx:upper_bound_idx]
+    wind_grad = data.fofd[lower_bound_idx:upper_bound_idx] #gradient of the spectrum (first order finite difference)
+
+    #Compute lagged and advanced signals to avoid over-computing
+    lag_wind_spectrum = np.roll(wind_spectrum, 1) #lag the spectrum in one sample
+    adv_wind_spectrum = np.roll(wind_spectrum, -1) #advance the spectrum in one sample
+
+    #Evaluate signal change in the first derivative to infer local maxima
+    grad_sign = np.sign(wind_grad) #compute the signs of each value of the first derivative
+    grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
+
+    #Evaluate spectrum peaks based on its neighbourhood
+    if not valley:
+        wind_l_upeaks = wind_spectrum>lag_wind_spectrum #check if a sample up peak is greater than its left neighbour
+        wind_r_upeaks = wind_spectrum>adv_wind_spectrum #check if a sample up peak is greater its right neighbour
+        neighbour_mask = wind_l_upeaks&wind_r_upeaks #check for samples where the values are greater than its neighbour and its an upeak
+    else:
+        wind_l_upeaks = wind_spectrum>lag_wind_spectrum  #check if a sample up peak is greater than its left neighbour
+        wind_l_dpeaks = np.abs(wind_spectrum)>np.abs(lag_wind_spectrum)  #check if a sample down peak is greater than its left neighbour
+        wind_r_upeaks = wind_spectrum>adv_wind_spectrum  #check if a sample up peak is greater its right neighbour
+        wind_r_dpeaks = np.abs(wind_spectrum)>np.abs(adv_wind_spectrum)  #check if a sample down peaks is greater its right neighbour
+        neighbour_mask = (wind_l_upeaks|wind_l_dpeaks)&(wind_r_upeaks|wind_r_dpeaks)  #check for samples where the values are greater than its neighbour
+
+    #Evaluate height change in the spectrum to infer local maxima
+    height_diff = np.abs(wind_spectrum-lag_wind_spectrum) #absolute value of the height change
+    height_mask = height_diff>=h_threshold #check for samples where its value is greater than its left neighbour
+
+    #Extract the peaks
+    sign_change_mask = grad_sign_change == 0  #when the first derivative changes from + to -. the sum is 0
+    mag_thresh_mask = wind_spectrum >= mag_threshold  #values of the FFT that surpass the magnitude threshold
+    sign_change_mask = neighbour_mask & sign_change_mask & mag_thresh_mask & height_mask  #update the mask where all prior masks are valid
+    raw_peaks = wind_spectrum[sign_change_mask]  #every peak magnitude detected by the change of signal in the gradient
+    raw_freq_peaks = wind_freqs[sign_change_mask]  #every peak frequency detected by the change of signal in the gradient
+    peaks = np.stack((raw_freq_peaks, raw_peaks), axis=1) #stack the peaks as [freqs, coordinates]
+
+    #Extract the tallest peak every (min_peak_dist) window
+    dist_peaks = [] #list to append the distanced peaks
+    space_search = np.arange(wind_freqs[0], wind_freqs[-1]+min_peak_dist, min_peak_dist) #divide the frequency window into (min_peak_dist) spaces
+    #TODO: find a way to vectorize this operation!
+    for i in range(len(space_search)-1):
+        l_freq_bound = space_search[i] #lower frequency boundary inside the search space
+        u_freq_bound = space_search[i+1] #upper frequency boundary inside the search space
+        dist_mask = (peaks[:,0]>=l_freq_bound)&(peaks[:,0]<=u_freq_bound) #filter peaks based on the frequency boundaries
+        try: #avoid error in case the mask returns empty
+            tallest_peak = np.argmax(peaks[dist_mask,1]) #find the tallest peak in the interval
+            dist_peaks.append(peaks[dist_mask][tallest_peak,:]) #extract the tallest peak
+        except:
+            continue #skip if empty mask
+    peaks = np.array(dist_peaks) #convert the list into numpy array and commute with peaks
+
+    if max_peaks:
+        if not harm_component:
+            raise ValueError('[dispersion_find_peaks] To return the {max_peaks} peaks, a harmonic component must be provided!')
+        if len(peaks) >= max_peaks:
+            harm_idx = np.argmin(np.abs(raw_freq_peaks-harm_component))  #find the index of the harmonic component peak
+            return peaks[harm_idx-max_peaks:harm_idx+max_peaks+1] #return the max_peaks peaks on each side of the component
+        else:
+            raise ValueError(f'[dispersion_find_peaks] length of the peaks matrix is smaller than max_peaks!')
+    else:
+        return peaks
+
+def fft_significant_peaks(data, harm_components, window_size=None, method='distance', kernel_size=None, gamma=None, mag_threshold=None, h_threshold=None, min_peak_dist=None, max_peaks=None, valley=False, gauss_sigma=None):
     '''
     :param data: framework.data_types.SimuData structure
     :param harm_components: a list/array containing the harmonic components to iterate over
     :param window_size: the size in Hz of the window around each harmonic component (None by default=50Hz)
+    :param method: which method will be used to detect desired peaks (distance by default)
     :param kernel_size: size of the moving average and std filter kernel (None by default=5)
     :param gamma: threshold for the difference between a peak and the moving average (None by default=1)
     :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-60dB)
+    :param h_threshold: threshold for peak height with respect to its neighboring sample (None by default=0dB)
+    :param min_peak_dist: filter for the tallest peaks distanced by at least the passed value (None by default)
     :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
-    :param smooth_kernel: apply curve smoothing to the spectrum if not None, receive a kernel_size
+    :param valley: flag to add valleys in the peak detection
+    :param gauss_sigma: apply gaussian smoothing to the spectrum if not None, receive the gaussian standard deviation
     :return: the coordinates for the six most significant sideband peaks per harmonic component
     len(output) = 3
     output[n] = coordinates
@@ -365,12 +373,18 @@ def fft_dispersion_significant_peaks(data, harm_components, window_size=None, ke
         raise TypeError(f'[fft_peak_finder] data input must be a SimuData object!')
     if not window_size:
         window_size = 50 #window of 50 Hz around the harmonic spike
-    if not kernel_size:
-        kernel_size = 5 #set the moving filter kernel to 5x5
-    if not gamma:
-        gamma = 1 #set the difference threshold as two time the moving standart deviation
+    methods_available = ['distance', 'dispersion','combined'] #available methods for peak finding
+    if method not in methods_available:
+        raise ValueError(f'[fft_significant_peaks] Method {method} no available! Try {methods_available}')
+    if method == 'dispersion':
+        if (kernel_size is None) | (gamma is None):
+            kernel_size = None #revert to None
+            gamma = None #revert to None
+            print(f'[fft_significant_peaks] Running dispersion-based peak finding without dispersion factor!')
     if not mag_threshold:
         mag_threshold = -60 #set the magnitude threshold as -60dB
+    if not h_threshold:
+        h_threshold = 0 #set the height threshold as 0dB
 
     #Filter only positive values from the fft frequencies
     freq_mask = data.fft_freqs>=0 #mask to filter negative frequencies
@@ -378,12 +392,20 @@ def fft_dispersion_significant_peaks(data, harm_components, window_size=None, ke
     fft_data_dB = data.fft_data_dB[freq_mask] #filtered magnitudes dB
 
     #Apply curve smoothing if required:
-    if smooth_kernel:
-        fft_data_dB = np.convolve(fft_data_dB, np.ones(smooth_kernel)/smooth_kernel, mode='same')  #filtered magnitudes dB
+    if gauss_sigma:
+        smooth_fft_data_dB = gaussian_filter1d(fft_data_dB, gauss_sigma) #smoothed magnitudes dB
+    else:
+        smooth_fft_data_dB = None
 
     #Store the new values in a PeakFinderData structure to avoid messing with the original data
     fofd = dsp_utils.backwards_num_spectrum_gradient(fft_data_dB, eps=1) #backwards first order finite difference
-    finder_data = data_types.PeakFinderData(fft_data_dB, fft_freqs, fofd) #PeakFinderData structure
+
+    #Create the PeakFinder data structure based on the method chosen
+    if method == 'dispersion':
+        finder_data = data_types.PeakFinderData(fft_data_dB, fft_freqs, fofd, smooth_data=smooth_fft_data_dB)
+    else:
+        finder_data = data_types.PeakFinderData(fft_data_dB, fft_freqs, fofd, smooth_data=smooth_fft_data_dB,
+                                                slip=data.slip, fm=data.fm)
 
     #iterate over the harmonic components to find all the significant sideband peaks
     peaks_per_component = [] #list to append the detected peaks for each harmonic component
@@ -394,9 +416,16 @@ def fft_dispersion_significant_peaks(data, harm_components, window_size=None, ke
         upper_idx = np.argmin(np.abs(finder_data.fft_freqs-(n+int(window_size/2)))) #window limit on the right
 
         #extract the peaks for both window sides
-        peaks = dispersion_find_peaks(finder_data, lower_idx, upper_idx, kernel_size=kernel_size,
-                                      gamma=gamma, mag_threshold=mag_threshold,
-                                      max_peaks=max_peaks, harm_component=n) #peaks at the window
+        if method == 'dispersion':
+            peaks = dispersion_find_peaks(finder_data, lower_idx, upper_idx, kernel_size=kernel_size,
+                                          gamma=gamma, mag_threshold=mag_threshold, h_threshold=h_threshold,
+                                          max_peaks=max_peaks, harm_component=n,
+                                          valley=valley) #peaks at the window
+        elif method == 'distance':
+            peaks = distance_find_peaks(finder_data, lower_idx, upper_idx,
+                                        mag_threshold=mag_threshold, h_threshold=h_threshold,
+                                        min_peak_dist=min_peak_dist, max_peaks=max_peaks, harm_component=n,
+                                        valley=valley)  # peaks at the window
         peaks_per_component.append(peaks) #concatenate the peaks
 
     return peaks_per_component
