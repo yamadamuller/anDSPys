@@ -1,6 +1,7 @@
 import numpy as np
 from framework import data_types, dsp_utils
 from scipy.ndimage import gaussian_filter1d
+import pandas as pd
 
 def apply_autocontrast(signal):
     '''
@@ -343,7 +344,7 @@ def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=No
         if not harm_component:
             raise ValueError('[dispersion_find_peaks] To return the {max_peaks} peaks, a harmonic component must be provided!')
         if len(peaks) >= max_peaks:
-            harm_idx = np.argmin(np.abs(raw_freq_peaks-harm_component))  #find the index of the harmonic component peak
+            harm_idx = np.argmin(np.abs(peaks[:,0]-harm_component))  #find the index of the harmonic component peak
             return peaks[harm_idx-max_peaks:harm_idx+max_peaks+1] #return the max_peaks peaks on each side of the component
         else:
             raise ValueError(f'[dispersion_find_peaks] length of the peaks matrix is smaller than max_peaks!')
@@ -364,7 +365,7 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
     :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
     :param valley: flag to add valleys in the peak detection
     :param gauss_sigma: apply gaussian smoothing to the spectrum if not None, receive the gaussian standard deviation
-    :return: the coordinates for the six most significant sideband peaks per harmonic component
+    :return: the coordinates for the most significant sideband peaks per harmonic component
     len(output) = 3
     output[n] = coordinates
     len(coordinates) <= 6 -> [freq, magnitude]
@@ -429,3 +430,25 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
         peaks_per_component.append(peaks) #concatenate the peaks
 
     return peaks_per_component
+
+def organize_peak_data(fft_peaks, loads):
+    '''
+    :param fft_peaks: the list with all the peak coordinates extracted from the detection routine
+    :param loads: the list with all the loads used in the peak findings
+    :return: the data organized as a pandas dataframe with the frequency displacement value as well
+    '''
+    #Convert the all peaks list into an array per load test
+    peaks_per_load = [] #list to store the arrays
+    load_counter = 0
+    for load_peaks in fft_peaks:
+        curr_peaks = np.empty((1, 4)) #empty array to concatenate iteratively
+        for harm_peak in load_peaks:
+            freq_disp = np.abs(harm_peak[:, 0] - np.roll(harm_peak[:, 0], -1)) #roll the frequencies in one sample to find displacement
+            freq_disp[-1] = 0 #set the last one to 0 to avoid comparing boundary values
+            harm_load = np.ones_like(freq_disp)*loads[load_counter] #register which load has been computed
+            curr_peaks = np.concat([curr_peaks, np.stack((harm_load, harm_peak[:,0], harm_peak[:,1], freq_disp), axis=0).T]) #concatenate each harmonic component peaks within the load data
+        local_frame = pd.DataFrame(curr_peaks[1:], columns=['load', 'freqs', 'fft_mags', 'freq_disp']) #append the peaks to the list
+        peaks_per_load.append(local_frame) #save the dataframes in the global list
+        load_counter += 1 #increase the load counter
+
+    return pd.concat(peaks_per_load) #concatenate all the processed dataframes into a single one

@@ -84,10 +84,4 @@ for load in loads:
 
 print(f'Average computing time for peak detection algorithm = {np.mean(proc_times)}s')
 
-#Convert the all peaks list into an array per load test
-peaks_per_load = [] #list to store the arrays
-for load_peaks in all_peaks:
-    curr_peaks = np.empty((1,2)) #empty array to concatenate iteratively
-    for harm_peak in load_peaks:
-        curr_peaks = np.concat([curr_peaks, harm_peak]) #concatenate each harmonic component peaks within the load data
-    peaks_per_load.append(curr_peaks[1:])
+output_data = dsp_utils.organize_peak_data(all_peaks, loads) #organize the output in a dataframe
