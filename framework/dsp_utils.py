@@ -370,8 +370,10 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
     output[n] = coordinates
     len(coordinates) <= 6 -> [freq, magnitude]
     '''
-    if type(data) != data_types.SimuData:
-        raise TypeError(f'[fft_peak_finder] data input must be a SimuData object!')
+    if (type(data) != data_types.SimuData) & (type(data) != data_types.LabData):
+        raise TypeError(f'[fft_peak_finder] data input must be a SimuData/LabData object!')
+    if type(data) == data_types.LabData:
+        data.slip = 0 #TODO: placeholder value for now!
     if not window_size:
         window_size = 50 #window of 50 Hz around the harmonic spike
     methods_available = ['distance', 'dispersion','combined'] #available methods for peak finding

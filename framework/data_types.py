@@ -63,3 +63,38 @@ class PeakFinderData:
             self.slip = slip #update the slip of the simulated machine
         if fm is not None:
             self.fm = fm #update the fundamental frequency of the simulated machine
+
+class LabData:
+    def __init__(self, raw_data, fm=60):
+        '''
+        :param raw_data: the raw .mat output file from lab controlled tests in numpy format
+        :param fm: fundamental frequency [Hz] (60 Hz by default)
+        '''
+        #check if current_data is a numpy array
+        if not isinstance(raw_data, np.ndarray):
+            raise TypeError(f'[data_types] current_data input required to be a numpy array!')
+        if len(raw_data) == 0:
+            raise ValueError(f'[data_types] current_data passed as an empty array!')
+
+        #Input arguments
+        self.raw_data = raw_data
+        self.fm = fm
+
+        #define current and time samples from the raw data
+        self.i_r = self.raw_data[:,1] #extract the R-phase current samples
+        self.i_s = self.raw_data[:,2] #extract the S-phase current samples
+        self.i_t = self.raw_data[:,3] #extract the T-phase current samples
+        self.i_time_grid = self.raw_data[:,0] #extract the time samples
+        self.Ts = self.i_time_grid[1]-self.i_time_grid[0] #sampling time
+        self.fs = 1/self.Ts #sampling frequency
+        self.Res = self.fs/len(self.i_r) #resolution
+
+        #compute the spectrum of the currents
+        self.fft_data_amp = dsp_utils.compute_FFT(self.i_t) #compute the FFT of the T phase
+        self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
+        self.fft_freqs = np.linspace(-self.fs / 2, self.fs / 2,len(self.i_r)) #FFT frequencies based on the sampling
+        self.fft_s_data_amp = dsp_utils.compute_FFT(self.i_s) #compute the FFT of the S phase
+        self.fft_s_data_dB = dsp_utils.apply_dB(self.fft_s_data_amp) #convert from amplitude to dB
+        self.fft_r_data_amp = dsp_utils.compute_FFT(self.i_r) #compute the FFT of the R phase
+        self.fft_r_data_dB = dsp_utils.apply_dB(self.fft_r_data_amp) #convert from amplitude to dB
+
