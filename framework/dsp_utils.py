@@ -443,13 +443,14 @@ def organize_peak_data(fft_peaks, loads):
     peaks_per_load = [] #list to store the arrays
     load_counter = 0
     for load_peaks in fft_peaks:
-        curr_peaks = np.empty((1, 4)) #empty array to concatenate iteratively
+        curr_peaks = np.empty((1, 5)) #empty array to concatenate iteratively
         for harm_peak in load_peaks:
-            freq_disp = np.abs(harm_peak[:, 0] - np.roll(harm_peak[:, 0], -1)) #roll the frequencies in one sample to find displacement
-            freq_disp[-1] = 0 #set the last one to 0 to avoid comparing boundary values
+            harm_idx = int(len(harm_peak[:,0])/2)  # the peak is always the middle element
+            freq_disp = np.abs(harm_peak[harm_idx,0]-harm_peak[:,0]) #frequency displacement of the peak with respect to the harmonic component
+            amp_diff = harm_peak[harm_idx,1]-harm_peak[:,1] #compute the difference between the harmonic component peak and all the other peaks
             harm_load = np.ones_like(freq_disp)*loads[load_counter] #register which load has been computed
-            curr_peaks = np.concat([curr_peaks, np.stack((harm_load, harm_peak[:,0], harm_peak[:,1], freq_disp), axis=0).T]) #concatenate each harmonic component peaks within the load data
-        local_frame = pd.DataFrame(curr_peaks[1:], columns=['load', 'freqs', 'fft_mags', 'freq_disp']) #append the peaks to the list
+            curr_peaks = np.concat([curr_peaks, np.stack((harm_load, harm_peak[:,0], harm_peak[:,1], freq_disp, amp_diff), axis=0).T]) #concatenate each harmonic component peaks within the load data
+        local_frame = pd.DataFrame(curr_peaks[1:], columns=['load', 'freqs', 'fft_mags', 'freq_disp', 'amp_diff']) #append the peaks to the list
         peaks_per_load.append(local_frame) #save the dataframes in the global list
         load_counter += 1 #increase the load counter
 
