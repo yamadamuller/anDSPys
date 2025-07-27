@@ -19,7 +19,7 @@ def compute_avg_rotor_speed(speed_data, time_samples, fm=60):
     if len(time_samples)==0:
         raise ValueError(f'[compute_avg_rotor_speed] time_samples passed as an empty array!')
 
-    lower_lim = time_samples[-1] - (1/fm) #last_sample - 1/60, last period from the samples to compute the avg. speed
+    lower_lim = time_samples[-1] - (10/fm) #last_sample - 1/60, last 10 periods from the samples to compute the avg. speed
     time_mask = time_samples>=lower_lim #mask to filter only the last period from the speed data
     return np.mean(speed_data[time_mask])
 

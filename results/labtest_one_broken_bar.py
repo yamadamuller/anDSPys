@@ -1,4 +1,4 @@
-from framework import file_mat, dsp_utils
+from framework import file_mat, dsp_utils, data_types
 import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')
@@ -7,7 +7,8 @@ import time
 
 #Important runtime variables
 wind_size = 40 #size around each component peak
-fm = 60 #fundamental frequency
+config_file = data_types.load_config_file('../config_file.yml') #load the config file
+fm = int(config_file["motor-configs"]["fm"]) #fundamental frequency
 harm_comps = [1,5,7] #harmonic components
 
 #Read the data and compute the FFT and DFT
@@ -16,7 +17,7 @@ data = file_mat.read(directory, fm) #organize the output in a SimuData structure
 all_peaks = [] #list to append all the results
 
 t_init = time.time()
-peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-60, min_peak_dist=3, max_peaks=1) #run the peak detection routine
+peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-60, min_peak_dist=3, max_peaks=3) #run the peak detection routine
 print(f'computing time for peak detection algorithm = {time.time()-t_init} s')
 
 all_peaks.append(peaks) #update the output list

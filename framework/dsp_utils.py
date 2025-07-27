@@ -1,6 +1,7 @@
 import numpy as np
 from framework import data_types, dsp_utils
 from scipy.ndimage import gaussian_filter1d
+from scipy.signal import hilbert
 import pandas as pd
 
 def apply_autocontrast(signal):
@@ -48,6 +49,13 @@ def apply_stat_filt(signal, filter_function, abs=False):
     else:
         return signal>=stat_threshold
 
+def apply_envelope(signal):
+    '''
+    :param signal: the array with the signal to apply the envelope
+    :return: the envelope of the image
+    '''
+    return np.abs(hilbert(signal))
+
 def compute_FFT(signal, shift=True, normalize=True):
     '''
     :param signal: the array with the signal to be transformed into the frequency domain
@@ -61,6 +69,7 @@ def compute_FFT(signal, shift=True, normalize=True):
         fft = np.fft.fftshift(fft) #center in 0 Hz
 
     if normalize:
+        #fft = np.abs(fft/len(fft)) #normalized by the length
         fft = np.abs(fft)/np.max(fft) #normalized by the maximum value
 
     return fft
@@ -328,7 +337,6 @@ def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=No
     #Extract the tallest peak every (min_peak_dist) window
     dist_peaks = [] #list to append the distanced peaks
     space_search = np.arange(wind_freqs[0], wind_freqs[-1]+min_peak_dist, min_peak_dist) #divide the frequency window into (min_peak_dist) spaces
-    #TODO: find a way to vectorize this operation!
     for i in range(len(space_search)-1):
         l_freq_bound = space_search[i] #lower frequency boundary inside the search space
         u_freq_bound = space_search[i+1] #upper frequency boundary inside the search space
@@ -370,7 +378,7 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
     output[n] = coordinates
     len(coordinates) <= 6 -> [freq, magnitude]
     '''
-    if (type(data) != data_types.SimuData) & (type(data) != data_types.LabData):
+    if (type(data) != data_types.SimuData) & (type(data) != data_types.LabData) & (type(data) != data_types.SensorData):
         raise TypeError(f'[fft_peak_finder] data input must be a SimuData/LabData object!')
     if type(data) == data_types.LabData:
         data.slip = 0 #TODO: placeholder value for now!
@@ -417,7 +425,7 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
         n = data.fm*n #update the component as a ratio of the fundamental frequency
         lower_idx = np.argmin(np.abs(finder_data.fft_freqs-(n-int(window_size/2)))) #window limit on the left
         upper_idx = np.argmin(np.abs(finder_data.fft_freqs-(n+int(window_size/2)))) #window limit on the right
-
+        #print(lower_idx, upper_idx)
         #extract the peaks for both window sides
         if method == 'dispersion':
             peaks = dispersion_find_peaks(finder_data, lower_idx, upper_idx, kernel_size=kernel_size,
@@ -443,7 +451,7 @@ def organize_peak_data(fft_peaks, loads):
     peaks_per_load = [] #list to store the arrays
     load_counter = 0
     for load_peaks in fft_peaks:
-        curr_peaks = np.empty((1, 5)) #empty array to concatenate iteratively
+        curr_peaks = np.empty((1,5)) #empty array to concatenate iteratively
         for harm_peak in load_peaks:
             harm_idx = int(len(harm_peak[:,0])/2)  # the peak is always the middle element
             freq_disp = np.abs(harm_peak[harm_idx,0]-harm_peak[:,0]) #frequency displacement of the peak with respect to the harmonic component

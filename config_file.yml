@@ -1,0 +1,6 @@
+sensor-configs:
+  current_relation: 11 #output voltage/input current relation
+
+motor-configs:
+  fm: 60 #fundamental frequency
+  ns: 1800 #syncronous rotor speed

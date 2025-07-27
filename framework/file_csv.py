@@ -24,18 +24,20 @@ def read(filedir, load_percentage, ns, fm=60):
 
     #Check if the file exists
     if not os.path.isfile(current_file):
-        raise ValueError(f'[file_csv] File {current_file} does not exist!')
-
-    current_data = pd.read_csv(current_file).to_numpy() #read the raw csv file and convert to numpy
+        print(f'[file_csv] File {current_file} does not exist, compiling the data without it!')
+        current_data = None #load the raw data as None
+    else:
+        current_data = pd.read_csv(current_file).to_numpy() #read the raw csv file and convert to numpy
 
     #process the raw data for speed
     speed_file = os.path.join(filedir, f'velocidade {int(load_perc)}.csv')  # define which file to read from
 
     #Check if the file exists
     if not os.path.isfile(speed_file):
-        raise ValueError(f'[file_csv] File {speed_file} does not exist!')
-
-    speed_data = pd.read_csv(speed_file).to_numpy()  #read the raw csv file and convert to numpy
+        print(f'[file_csv] File {speed_file} does not exist, compiling data without it!')
+        speed_data = None #load the raw data as None
+    else:
+        speed_data = pd.read_csv(speed_file).to_numpy()  #read the raw csv file and convert to numpy
 
     data = data_types.SimuData(current_data, speed_data, int(load_percentage), ns, fm) #create the data structure with the simulation output
     return data

@@ -1,4 +1,4 @@
-from framework import file_mat, dsp_utils
+from framework import file_mat, file_sensor_mat, dsp_utils
 import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')
@@ -11,12 +11,12 @@ fm = 60 #fundamental frequency
 harm_comps = [1,5,7] #harmonic components
 
 #Read the data and compute the FFT and DFT
-directory = '../data/labtest_1_broken_bar/' #directory with data is located in the directory prior
-data = file_mat.read(directory, fm) #organize the output in a SimuData structure
+directory = '../data/benchtesting_PD' #directory with data is located in the directory prior
+data = file_sensor_mat.read(directory, 100, 1800, 1, fm) #organize the output in a SimuData structure
 all_peaks = [] #list to append all the results
 
 t_init = time.time()
-peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-60, min_peak_dist=3, max_peaks=1) #run the peak detection routine
+peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-60, min_peak_dist=3, max_peaks=3) #run the peak detection routine
 print(f'computing time for peak detection algorithm = {time.time()-t_init} s')
 
 all_peaks.append(peaks) #update the output list

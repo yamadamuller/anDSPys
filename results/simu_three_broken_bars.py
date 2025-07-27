@@ -1,4 +1,4 @@
-from framework import file_csv, dsp_utils
+from framework import file_csv, dsp_utils, data_types
 import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')
@@ -7,8 +7,9 @@ import time
 
 #Important runtime variables
 wind_size = 40 #size around each component peak
-ns = 1800 #synchronous speed [rpm]
-fm = 60 #fundamental frequency
+config_file = data_types.load_config_file('../config_file.yml') #load the config file
+ns = int(config_file["motor-configs"]["ns"]) #synchronous speed [rpm]
+fm = int(config_file["motor-configs"]["fm"]) #fundamental frequency
 harm_comps = [1,5,7] #harmonic components
 mags = [-25,-44,-44] #all the magnitude thresholds
 

@@ -1,3 +1,6 @@
-matplotlib
-numpy
-pandas
+matplotlib==3.10.3
+numpy==1.24.4
+pandas==2.3.1
+PyYAML==5.4.1
+PyYAML==6.0.2
+scipy==1.16.0
