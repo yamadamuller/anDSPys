@@ -3,6 +3,7 @@ import numpy as np
 from framework import electromag_utils, dsp_utils
 from scipy.io import loadmat
 import yaml
+import re
 
 def load_config_file(config_file):
     '''
@@ -191,14 +192,15 @@ class BatchSensorData:
         self.load_percentage = load_percentage #load percentage to append data
         self.batch_list = os.listdir(self.filedir) #list all the directory files
         self.batch_list = [os.path.join(filedir, batch_file) for batch_file in self.batch_list if str(load_percentage) in batch_file] #filter all the files with the same load percentage
-        self.batch_list.sort() #sort the list
         self.ns = ns
         self.fm = fm
         self.transient = transient
 
         #Compute the average of the current and voltage in every phase
-        self.sdata_list = [] #list to append all the SensorData structures computed per file
+        self.batch_data = np.zeros_like(self.batch_list, dtype=SensorData) #list to append all the SensorData structures computed per file
         for sensor_file in self.batch_list:
+            find_num = [expn.start() for expn in re.finditer('_', sensor_file)] #find where the experiment number lies in the filename
+            num_idx = int(sensor_file[find_num[1]+1:find_num[2]])-1 #convert the experiment num into index
             curr_raw_data = loadmat(sensor_file) #read the raw .MAT sensor_file into dictionary format
-            self.sdata_list.append(SensorData(curr_raw_data, self.ns, self.fm, self.transient)) #append the data structure with the lab tested output
+            self.batch_data[num_idx] = SensorData(curr_raw_data, self.ns, self.fm, self.transient) #append the data structure with the lab tested output
             print(f'[BatchSensorData] File {sensor_file} read!')
