@@ -50,10 +50,11 @@ print(f'SensorData available attributes: {data.__dict__.keys()}')
 plt.figure(1)
 leg = [] #create a list to append the legends per data
 for batch_idx in range(len(data.batch_data)):
-    #Create a plot of the current FFT and add it to the global figure
-    plt.plot(data.batch_data[batch_idx].fft_freqs, data.batch_data[batch_idx].fft_data_dB)
+    batch_elem = data.batch_data[batch_idx] #current processed element
+    freq_mask = (batch_elem.fft_freqs>=50)&(batch_elem.fft_freqs<70) #mask the frequencies between 50 and 60 Hz to reduce samples (less resource-intensive)
+    plt.plot(batch_elem.fft_freqs[freq_mask], batch_elem.fft_data_dB[freq_mask])
     leg.append(f'Experiment {batch_idx}')
-plt.xlim([50,70]) #reduce the x-axis to improve visualization
+plt.xlim([50, 70]) #reduce the x-axis to improve visualization
 plt.xlabel('Frequency [Hz]')
 plt.ylabel('FFT magnitude [dB]')
 plt.title('Batch data current spectrum')

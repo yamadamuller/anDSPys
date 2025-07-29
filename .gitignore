@@ -209,3 +209,4 @@ __marimo__/
 #data directory
 data/
 test_pseudo_phase_unwrapping.py
+data.zip
