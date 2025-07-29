@@ -15,7 +15,7 @@ harm_comps = [1,5,7] #harmonic components
 #Read the data and compute the FFT and DFT
 directory = '../data/1_broken_bar/' #directory with data is located in the directory prior
 healthy_directory = '../data/healthy/' #directory with data is located in the directory prior
-loads = [100,75,50,25] #all the available loads to test the algorithm
+loads = [100, 75, 50, 25] #all the available loads to test the algorithm
 fig_counter = 1 #counter to spawn new figures
 proc_times = [] #list to append processing times per data
 all_peaks = [] #list to append all peaks registered along the loads

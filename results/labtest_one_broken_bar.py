@@ -11,9 +11,9 @@ config_file = data_types.load_config_file('../config_file.yml') #load the config
 fm = int(config_file["motor-configs"]["fm"]) #fundamental frequency
 harm_comps = [1,5,7] #harmonic components
 
-#Read the data and compute the FFT and DFT
+#Read the data and compute the FFT
 directory = '../data/labtest_1_broken_bar/' #directory with data is located in the directory prior
-data = file_mat.read(directory, fm) #organize the output in a SimuData structure
+data = file_mat.read(directory, fm) #organize the output in a LabData structure
 all_peaks = [] #list to append all the results
 
 t_init = time.time()

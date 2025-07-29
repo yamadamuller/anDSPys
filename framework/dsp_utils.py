@@ -56,11 +56,12 @@ def apply_envelope(signal):
     '''
     return np.abs(hilbert(signal))
 
-def compute_FFT(signal, shift=True, normalize=True):
+def compute_FFT(signal, shift=True, normalize=True, normalize_by=np.max):
     '''
     :param signal: the array with the signal to be transformed into the frequency domain
     :param shift: flag to shift or not the FFT output (True by default)
     :param normalize: flag to return the FFT magnitude normalized or not (True by default)
+    :param normalize_by: which function will be used to normalize the FFT
     :return: spectrum of the signal
     '''
     fft = np.fft.fft(signal) #compute the fft on the signal
@@ -69,8 +70,7 @@ def compute_FFT(signal, shift=True, normalize=True):
         fft = np.fft.fftshift(fft) #center in 0 Hz
 
     if normalize:
-        #fft = np.abs(fft/len(fft)) #normalized by the length
-        fft = np.abs(fft)/np.max(fft) #normalized by the maximum value
+        fft = np.abs(fft)/normalize_by(fft) #normalized by the length
 
     return fft
 
@@ -336,6 +336,11 @@ def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=No
 
     #Extract the tallest peak every (min_peak_dist) window
     dist_peaks = [] #list to append the distanced peaks
+
+    #Placeholder value to deal with line current values
+    if min_peak_dist > 3:
+        min_peak_dist = np.floor(min_peak_dist)
+
     space_search = np.arange(wind_freqs[0], wind_freqs[-1]+min_peak_dist, min_peak_dist) #divide the frequency window into (min_peak_dist) spaces
     for i in range(len(space_search)-1):
         l_freq_bound = space_search[i] #lower frequency boundary inside the search space
@@ -425,7 +430,7 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
         n = data.fm*n #update the component as a ratio of the fundamental frequency
         lower_idx = np.argmin(np.abs(finder_data.fft_freqs-(n-int(window_size/2)))) #window limit on the left
         upper_idx = np.argmin(np.abs(finder_data.fft_freqs-(n+int(window_size/2)))) #window limit on the right
-        #print(lower_idx, upper_idx)
+
         #extract the peaks for both window sides
         if method == 'dispersion':
             peaks = dispersion_find_peaks(finder_data, lower_idx, upper_idx, kernel_size=kernel_size,

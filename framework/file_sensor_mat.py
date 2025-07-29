@@ -3,7 +3,7 @@ import os
 from framework import data_types
 from scipy.io import loadmat
 
-def read(filedir, load_percentage, ns, experiment_num=None, fm=60, transient=False, batch=False):
+def read(filedir, load_percentage, ns, experiment_num=None, fm=60, transient=False, batch=False, normalize_by=len):
     '''
     :param filedir: path to the .csv output file in the local filesystem
     :param load_percentage: percentage of the load used in the simulation [%]
@@ -12,6 +12,7 @@ def read(filedir, load_percentage, ns, experiment_num=None, fm=60, transient=Fal
     :param fm: fundamental frequency [Hz] (60 Hz by default)
     :param transient: flag to filter out the transient
     :param batch: compute the data as the average from multiple experiments
+    :param normalize_by: which function will be used to normalize the FFT
     return SensorData structure with the required data from the lab testing
     '''
     #Check if the directory passed as argument exists
@@ -30,8 +31,8 @@ def read(filedir, load_percentage, ns, experiment_num=None, fm=60, transient=Fal
             raise ValueError(f'[file_sensor_mat] File {sensor_file} does not exist!')
 
         raw_data = loadmat(sensor_file) #read the raw .MAT file into dictionary format
-        data = data_types.SensorData(raw_data, ns, fm, transient) #create the data structure with the lab tested output
+        data = data_types.SensorData(raw_data, ns, fm, transient, normalize_by=normalize_by) #create the data structure with the lab tested output
     else:
-        data = data_types.BatchSensorData(filedir, load_percentage, ns, fm, transient) #compile the batch of data available
+        data = data_types.BatchSensorData(filedir, load_percentage, ns, fm, transient, normalize_by=normalize_by) #compile the batch of data available
 
     return data

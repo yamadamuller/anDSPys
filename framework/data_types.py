@@ -27,13 +27,14 @@ class SimuData:
     '''
     class that stores all the required data from a finite element simulation from ANSYS
     '''
-    def __init__(self, current_data, speed_data, load_percentage, ns, fm=60):
+    def __init__(self, current_data, speed_data, load_percentage, ns, fm=60, normalize_by=np.max):
         '''
         :param current_data: the raw csv current output file from ANSYS in numpy format
         :param speed_data: the raw csv speed output file from ANSYS in numpy format
         :param load_percentage: percentage of the load used in the simulation [%]
         :param ns: synchronous speed of the simulated motor [rpm]
         :param fm: fundamental frequency [Hz] (60 Hz by default)
+        :param normalize_by: which function will be used to normalize the FFT
         '''
         #check if current_data is a numpy array
         current_flag = True #flag to monitor which data to compute
@@ -63,7 +64,7 @@ class SimuData:
             self.Res = self.fs/len(self.i_motor) #resolution
 
             #compute the spectrum of the current
-            self.fft_data_amp = dsp_utils.compute_FFT(self.i_motor) #compute the FFT
+            self.fft_data_amp = dsp_utils.compute_FFT(self.i_motor, normalize_by=normalize_by) #compute the FFT
             self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
             self.fft_freqs = np.linspace(-self.fs/2, self.fs/2, len(self.i_motor)) #FFT frequencies based on the sampling
 
@@ -89,7 +90,7 @@ class PeakFinderData:
             self.fm = fm #update the fundamental frequency of the simulated machine
 
 class LabData:
-    def __init__(self, raw_data, fm=60):
+    def __init__(self, raw_data, fm=60, normalize_by=np.max):
         '''
         :param raw_data: the raw .mat output file from lab controlled tests in numpy format
         :param fm: fundamental frequency [Hz] (60 Hz by default)
@@ -114,21 +115,22 @@ class LabData:
         self.Res = self.fs/len(self.i_r) #resolution
 
         #compute the spectrum of the currents
-        self.fft_data_amp = dsp_utils.compute_FFT(self.i_t) #compute the FFT of the T phase
+        self.fft_data_amp = dsp_utils.compute_FFT(self.i_t, normalize_by=normalize_by) #compute the FFT of the T phase
         self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
         self.fft_freqs = np.linspace(-self.fs/2, self.fs/2, len(self.i_r)) #FFT frequencies based on the sampling
-        self.fft_s_data_amp = dsp_utils.compute_FFT(self.i_s) #compute the FFT of the S phase
+        self.fft_s_data_amp = dsp_utils.compute_FFT(self.i_s, normalize_by=normalize_by) #compute the FFT of the S phase
         self.fft_s_data_dB = dsp_utils.apply_dB(self.fft_s_data_amp) #convert from amplitude to dB
-        self.fft_r_data_amp = dsp_utils.compute_FFT(self.i_r) #compute the FFT of the R phase
+        self.fft_r_data_amp = dsp_utils.compute_FFT(self.i_r, normalize_by=normalize_by) #compute the FFT of the R phase
         self.fft_r_data_dB = dsp_utils.apply_dB(self.fft_r_data_amp) #convert from amplitude to dB
 
 class SensorData:
-    def __init__(self, raw_data, ns, fm=60, transient=False):
+    def __init__(self, raw_data, ns, fm=60, transient=False, normalize_by=len):
         '''
         :param raw_data: the raw .MAT output file from lab controlled tests in numpy format
         :param ns: synchronous speed of the simulated motor [rpm]
         :param fm: fundamental frequency [Hz] (60 Hz by default)
         :param transient: flag to filter out the transient
+        :param normalize_by: which function will be used to normalize the FFT
         '''
         #check if current_data is a dictionary
         if not isinstance(raw_data, dict):
@@ -143,12 +145,11 @@ class SensorData:
 
         #define current
         self.time_grid = self.raw_data["Channel_1_Data"] #extract the time samples
-        #TODO: find better ways to filter transient
-        #self.time_grid[-1]-10
+
         if transient:
             self.transient_mask = (self.time_grid>=0) #mask in order to keep the transient
         else:
-            self.transient_mask = (self.time_grid>=7.5) #mask in order to filter out transient
+            self.transient_mask = (self.time_grid>=8) #mask in order to filter out transient
 
         config_file = load_config_file('../config_file.yml') #load the config file
         self.time_grid = self.time_grid[self.transient_mask]
@@ -160,12 +161,12 @@ class SensorData:
         self.Res = self.fs/len(self.i_r) #resolution
 
         #compute the spectrum of the currents
-        self.fft_data_amp = dsp_utils.compute_FFT(self.i_t) #compute the FFT of the T phase
+        self.fft_data_amp = dsp_utils.compute_FFT(self.i_t, normalize_by=normalize_by) #compute the FFT of the T phase
         self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
         self.fft_freqs = np.linspace(-self.fs/2, self.fs/2,len(self.i_r)) #FFT frequencies based on the sampling
-        self.fft_s_data_amp = dsp_utils.compute_FFT(self.i_s) #compute the FFT of the S phase
+        self.fft_s_data_amp = dsp_utils.compute_FFT(self.i_s, normalize_by=normalize_by) #compute the FFT of the S phase
         self.fft_s_data_dB = dsp_utils.apply_dB(self.fft_s_data_amp) #convert from amplitude to dB
-        self.fft_r_data_amp = dsp_utils.compute_FFT(self.i_r) #compute the FFT of the R phase
+        self.fft_r_data_amp = dsp_utils.compute_FFT(self.i_r, normalize_by=normalize_by) #compute the FFT of the R phase
         self.fft_r_data_dB = dsp_utils.apply_dB(self.fft_r_data_amp) #convert from amplitude to dB
 
         #define other motor values
@@ -179,13 +180,14 @@ class SensorData:
         self.slip = electromag_utils.compute_slip(self.ns, self.nr) #compute the slip
 
 class BatchSensorData:
-    def __init__(self, filedir, load_percentage, ns, fm=60, transient=False):
+    def __init__(self, filedir, load_percentage, ns, fm=60, transient=False, normalize_by=len):
         '''
         :param filedir: path to the .csv output file in the local filesystem
         :param load_percentage: percentage of the load used in the simulation [%]
         :param ns: synchronous speed of the simulated motor [rpm]
         :param fm: fundamental frequency [Hz] (60 Hz by default)
         :param transient: flag to filter out the transient
+        :param normalize_by: which function will be used to normalize the FFT
         '''
         #Input arguments
         self.filedir = filedir #directory with the batch of data
@@ -202,5 +204,5 @@ class BatchSensorData:
             find_num = [expn.start() for expn in re.finditer('_', sensor_file)] #find where the experiment number lies in the filename
             num_idx = int(sensor_file[find_num[1]+1:find_num[2]])-1 #convert the experiment num into index
             curr_raw_data = loadmat(sensor_file) #read the raw .MAT sensor_file into dictionary format
-            self.batch_data[num_idx] = SensorData(curr_raw_data, self.ns, self.fm, self.transient) #append the data structure with the lab tested output
+            self.batch_data[num_idx] = SensorData(curr_raw_data, self.ns, self.fm, self.transient, normalize_by=normalize_by) #append the data structure with the lab tested output
             print(f'[BatchSensorData] File {sensor_file} read!')
