@@ -20,7 +20,7 @@ fig_counter = 1 #counter to spawn new figures
 proc_times = [] #list to append processing times per data
 all_peaks = [] #list to append all peaks registered along the loads
 for load in loads:
-    data_healthy = file_csv.read(healthy_directory, load, ns, fm) #organize the healthy output in a SimuData structure
+    data_healthy = file_csv.read(healthy_directory, load, ns, fm, normalize_by=np.max) #organize the healthy output in a SimuData structure
     data = file_csv.read(directory, load, ns, fm) #organize the output in a SimuData structure
 
     t_init = time.time()

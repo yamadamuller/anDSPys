@@ -63,10 +63,10 @@ For example:
 |       |   +---experimento_7_carga_100__19200Hz_19200Hz.MAT
 |       |   |       
 |       |   +---experimento_8_carga_100__19200Hz_19200Hz.MAT
-|       |           
-.       .
-.       .
-.       .  
+|       |   |
+.       .   .
+.       .   .
+.       .   .
 ```
 
 ## Test files

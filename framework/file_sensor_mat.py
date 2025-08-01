@@ -1,4 +1,3 @@
-import pandas as pd
 import os
 from framework import data_types
 from scipy.io import loadmat
@@ -24,7 +23,7 @@ def read(filedir, load_percentage, ns, experiment_num=None, fm=60, transient=Fal
             experiment_num = 1 #defaults to 1
 
         #process the raw data for current
-        sensor_file = os.path.join(filedir, f'experimento_{experiment_num}_carga_{load_percentage}__19200Hz_19200Hz.MAT') #define which file to read from
+        sensor_file = os.path.join(filedir, f'experimento_{int(experiment_num)}_carga_{load_percentage}__19200Hz_19200Hz.MAT') #define which file to read from
 
         #Check if the file exists
         if not os.path.isfile(sensor_file):

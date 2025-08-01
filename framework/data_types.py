@@ -4,6 +4,7 @@ from framework import electromag_utils, dsp_utils
 from scipy.io import loadmat
 import yaml
 import re
+import datetime
 
 def load_config_file(config_file):
     '''
@@ -22,6 +23,32 @@ def load_config_file(config_file):
         return config
     except:
         raise RuntimeError(f'[data_types] Failed to load {config_file}!')
+
+def read_NIHW_data(file):
+    '''
+    :param file: path to the .txt output file in the local filesystem
+    :return: the data from the .txt file in numpy.array format (relative timestamp and current value)
+    '''
+    data = [] #list to append all the computed samples from each line
+    ref_time = None #store the timestamp of the first sample to subtract from in the next timestamps
+    timestamp_flag = True #flag to monitor the first sample's timestamp
+    with open(file) as infile: #read the .txt w/o loading into memory
+        for line in infile:
+            line_att = line.split() #list all the attributes per sample separately
+            line_att[1] = line_att[1].replace(',', '.') #timestamp with '.' decimal notation
+            line_att[2] = line_att[2].replace(',', '.') #current with '.' decimal notation
+            fmt_time_sample = datetime.datetime.strptime(line_att[1], '%H:%M:%S.%f') #format into datetime object
+
+            #Handle reference time attribute
+            if timestamp_flag:
+                ref_time = fmt_time_sample #commute the variables
+                timestamp_flag = False #set flag as False to avoid overwriting the variable
+
+            rel_timestamp = fmt_time_sample - ref_time #extract the relative timestamp
+            rel_timestamp = float(rel_timestamp.seconds)+float(rel_timestamp.microseconds)*1e-6 #convert to seconds
+            data.append(np.array([rel_timestamp,float(line_att[2])])) #store the timestamp and current value of the sample
+
+    return np.array(data) #convert the data list into a numpy array
 
 class SimuData:
     '''
@@ -64,9 +91,9 @@ class SimuData:
             self.Res = self.fs/len(self.i_motor) #resolution
 
             #compute the spectrum of the current
+            self.fft_freqs = np.linspace(-self.fs/2,self.fs/2,len(self.i_motor)) #FFT frequencies based on the sampling
             self.fft_data_amp = dsp_utils.compute_FFT(self.i_motor, normalize_by=normalize_by) #compute the FFT
             self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
-            self.fft_freqs = np.linspace(-self.fs/2, self.fs/2, len(self.i_motor)) #FFT frequencies based on the sampling
 
         #define some important electromagnetic variables
         if speed_flag:
@@ -115,16 +142,16 @@ class LabData:
         self.Res = self.fs/len(self.i_r) #resolution
 
         #compute the spectrum of the currents
+        self.fft_freqs = np.linspace(-self.fs/2, self.fs/2,len(self.i_r)) #FFT frequencies based on the sampling
         self.fft_data_amp = dsp_utils.compute_FFT(self.i_t, normalize_by=normalize_by) #compute the FFT of the T phase
         self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
-        self.fft_freqs = np.linspace(-self.fs/2, self.fs/2, len(self.i_r)) #FFT frequencies based on the sampling
         self.fft_s_data_amp = dsp_utils.compute_FFT(self.i_s, normalize_by=normalize_by) #compute the FFT of the S phase
         self.fft_s_data_dB = dsp_utils.apply_dB(self.fft_s_data_amp) #convert from amplitude to dB
         self.fft_r_data_amp = dsp_utils.compute_FFT(self.i_r, normalize_by=normalize_by) #compute the FFT of the R phase
         self.fft_r_data_dB = dsp_utils.apply_dB(self.fft_r_data_amp) #convert from amplitude to dB
 
 class SensorData:
-    def __init__(self, raw_data, ns, fm=60, transient=False, normalize_by=len):
+    def __init__(self, raw_data, ns, fm=60, transient=False, normalize_by=np.max):
         '''
         :param raw_data: the raw .MAT output file from lab controlled tests in numpy format
         :param ns: synchronous speed of the simulated motor [rpm]
@@ -180,7 +207,7 @@ class SensorData:
         self.slip = electromag_utils.compute_slip(self.ns, self.nr) #compute the slip
 
 class BatchSensorData:
-    def __init__(self, filedir, load_percentage, ns, fm=60, transient=False, normalize_by=len):
+    def __init__(self, filedir, load_percentage, ns, fm=60, transient=False, normalize_by=np.max):
         '''
         :param filedir: path to the .csv output file in the local filesystem
         :param load_percentage: percentage of the load used in the simulation [%]
@@ -206,3 +233,42 @@ class BatchSensorData:
             curr_raw_data = loadmat(sensor_file) #read the raw .MAT sensor_file into dictionary format
             self.batch_data[num_idx] = SensorData(curr_raw_data, self.ns, self.fm, self.transient, normalize_by=normalize_by) #append the data structure with the lab tested output
             print(f'[BatchSensorData] File {sensor_file} read!')
+
+class NIHardwareData:
+    def __init__(self, file, fm=60, normalize_by=np.max):
+        '''
+        :param file: path to the .txt output file in the local filesystem
+        :param fm: fundamental frequency [Hz] (60 Hz by default)
+        :param normalize_by: which function will be used to normalize the FFT
+        '''
+        #Input arguments
+        if not os.path.isfile(file):
+            raise ValueError(f'[NIHardwareData] File {file} does not exist!')
+
+        self.file = file #path to the
+        self.fm = fm
+        self.raw_data = read_NIHW_data(file) #read the .txt file content into a numpy array
+        self.time_grid = self.raw_data[:,0] #time samples
+        self.i_motor = self.raw_data[:,1] #current samples
+        self.Ts = self.time_grid[1]-self.time_grid[0] #sampling time
+        self.fs = 1/self.Ts #sampling frequency
+        self.Res = self.fs/len(self.i_motor) #resolution
+
+        #compute the spectrum of the current
+        self.fft_freqs = np.linspace(-self.fs/2, self.fs/2, len(self.i_motor)) #FFT frequencies based on the sampling
+        self.fft_data_amp = dsp_utils.compute_FFT(self.i_motor, normalize_by=normalize_by) #compute the FFT
+        self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
+
+class BatchNIHardwareData:
+    def __init__(self, file_list, fm=60, normalize_by=np.max):
+        '''
+        :param file_list: list containing all the files to append in the batch
+        :param fm: fundamental frequency [Hz] (60 Hz by default)
+        :param normalize_by: which function will be used to normalize the FFT
+        '''
+        self.file_list = file_list
+        self.fm = fm
+        self.batch_data = np.zeros_like(self.file_list, dtype=NIHardwareData) #list to append all the NIHardwareData structures computed per file
+        for file_idx in range(len(file_list)):
+            self.batch_data[file_idx] = NIHardwareData(file_list[file_idx], fm=self.fm, normalize_by=normalize_by) #append the data structure with the hardware output
+            print(f'[BatchNIHardwareData] File {file_list[file_idx]} read!')

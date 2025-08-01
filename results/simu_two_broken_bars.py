@@ -21,11 +21,11 @@ fig_counter = 1 #counter to spawn new figures
 proc_times = [] #list to append processing times per data
 all_peaks = [] #list to append all peaks registered along the loads
 for load in loads:
-    data_healthy = file_csv.read(healthy_directory, load, ns, fm) #organize the healthy output in a SimuData structure
+    data_healthy = file_csv.read(healthy_directory, load, ns, fm, normalize_by=np.max) #organize the healthy output in a SimuData structure
     data = file_csv.read(directory, load, ns, fm) #organize the output in a SimuData structure
 
     t_init = time.time()
-    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-60, max_peaks=1) #run the peak detection routine
+    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-80, max_peaks=1) #run the peak detection routine
     proc_times.append(time.time() - t_init)
     all_peaks.append(peaks)  # store the peaks
 

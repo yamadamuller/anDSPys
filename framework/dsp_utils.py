@@ -70,8 +70,7 @@ def compute_FFT(signal, shift=True, normalize=True, normalize_by=np.max):
         fft = np.fft.fftshift(fft) #center in 0 Hz
 
     if normalize:
-        fft = np.abs(fft)/normalize_by(fft) #normalized by the length
-
+        fft = np.abs(fft)/normalize_by(np.abs(fft)) #normalized by the length
     return fft
 
 def compute_DFT(signal_r, signal_i, shift=True):
@@ -295,7 +294,7 @@ def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=No
     if not h_threshold:
         h_threshold = 0 #set the height threshold as 0dB
     if not min_peak_dist:
-        min_peak_dist = 2*data.slip*data.fm #the expected distance between peaks given the slope (2.s.fm)
+        min_peak_dist = np.floor(2*data.slip*data.fm) #the expected distance between peaks given the slope (2.s.fm)
 
     #Find the peaks within the side defined by the boundary index (bound_idx)
     wind_freqs = data.fft_freqs[lower_bound_idx:upper_bound_idx]
@@ -323,7 +322,7 @@ def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=No
         neighbour_mask = (wind_l_upeaks|wind_l_dpeaks)&(wind_r_upeaks|wind_r_dpeaks)  #check for samples where the values are greater than its neighbour
 
     #Evaluate height change in the spectrum to infer local maxima
-    height_diff = np.abs(wind_spectrum-lag_wind_spectrum) #absolute value of the height change
+    height_diff = np.abs(wind_spectrum-adv_wind_spectrum) #absolute value of the height change
     height_mask = height_diff>=h_threshold #check for samples where its value is greater than its left neighbour
 
     #Extract the peaks
@@ -336,11 +335,6 @@ def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=No
 
     #Extract the tallest peak every (min_peak_dist) window
     dist_peaks = [] #list to append the distanced peaks
-
-    #Placeholder value to deal with line current values
-    if min_peak_dist > 3:
-        min_peak_dist = np.floor(min_peak_dist)
-
     space_search = np.arange(wind_freqs[0], wind_freqs[-1]+min_peak_dist, min_peak_dist) #divide the frequency window into (min_peak_dist) spaces
     for i in range(len(space_search)-1):
         l_freq_bound = space_search[i] #lower frequency boundary inside the search space

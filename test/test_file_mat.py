@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 from framework import file_mat
 
 directory = '../data/labtest_1_broken_bar/' #directory with data is located in the directory prior
