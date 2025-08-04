@@ -19,14 +19,17 @@ ns = int(config_file["motor-configs"]["ns"]) #synchronous speed
 
 #The function responsible for loading the .MAT sensor data output in a batch belongs to the file_sensor_mat package.
 #Call it with the required arguments and store the output into a variable.
-data_directory = '../data/benchtesting_PD' #define the directory where your .csv data is located
+data_directory = ['../data/benchtesting_PD/experimento_1_carga_100__19200Hz_19200Hz.MAT',
+             '../data/benchtesting_PD/experimento_2_carga_100__19200Hz_19200Hz.MAT',
+             '../data/benchtesting_PD/experimento_3_carga_100__19200Hz_19200Hz.MAT'] #directory with data is located in the directory prior
 load = 100 #define which simulation you want to load based on the load percentage
+n_periods = 1200 #define how many peroids will be extracted from the current signal
 #For more information on how to format the data, see the README file in the "Running the framework" section
 try:
     data = file_sensor_mat.read(data_directory, load, ns,
-                                fm=fm, batch=True) #run the file reading function
+                                fm=fm, n_periods=n_periods, batch=True) #run the file reading function
 except Exception as e:
-    raise RuntimeError(f'[read_sensor_data] Read function failed with {e}')
+    raise RuntimeError(f'[read_sensor_data_batch] Read function failed with {e}')
 #Optional arguments:
 #-> fm: fundamental frequency (60 Hz by default)
 #-> transient: flag to filter out, or not, the transient in the electrical signals (False by default = Filter out)
@@ -36,11 +39,11 @@ except Exception as e:
 if type(data) == data_types.BatchSensorData:
     print(type(data))
 else:
-    raise TypeError(f'[read_sensor_data] The variable is not a SensorData structure, data type = {type(data)}!')
+    raise TypeError(f'[read_sensor_data_batch] The variable is not a SensorData structure, data type = {type(data)}!')
 #For more information on the SimuData structure, see the "../framework/data_types.py" script
 
 #You may now access the structure's attributes to process your data into the framework.
-print(f'SensorData available attributes: {data.__dict__.keys()}')
+print(f'BatchSensorData available attributes: {data.__dict__.keys()}')
 
 #This structure compiles all the SensorData structures from the available experiments in an array.
 #Each element of the array corresponds to the respective experiment number subtracted by 1 (python has 0-based indexing)

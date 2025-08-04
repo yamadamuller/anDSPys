@@ -4,25 +4,78 @@ import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
-#load files and normalize by the fundamental amplitude
-ni_data = file_txt.read('../data/NI/i_phase/BQ_PC_1.txt', fm=60, normalize_by=np.max)
-ansys_data = file_csv.read('../data/1_broken_bar_28072025', 100, 1800, fm=60, normalize_by=np.max)
-qx_data = file_sensor_mat.read('../data/benchtesting_PD', 100, 1800, experiment_num=1, normalize_by=np.max)
+#load files and normalize by the fundamental dBlitude
+ni_list = ['../data/NI/i_line/BQ_PC_IL_1.txt', '../data/NI/i_line/BQ_PC_IL_2.txt', '../data/NI/i_line/BQ_PC_IL_3.txt',
+           '../data/NI/i_line/BQ_PC_IL_4.txt', '../data/NI/i_line/BQ_PC_IL_5.txt', '../data/NI/i_line/BQ_PC_IL_6.txt',
+           '../data/NI/i_line/BQ_PC_IL_7.txt', '../data/NI/i_line/BQ_PC_IL_8.txt', '../data/NI/i_line/BQ_PC_IL_9.txt',
+           '../data/NI/i_line/BQ_PC_IL_10.txt']
+ni_data = file_txt.read(ni_list, fm=60, batch=True, normalize_by=np.max)
+ansys_data = file_csv.read('../data/1_broken_bar_03082025/i_line/R', 100, 1800, fm=60, normalize_by=np.max)
+qx_data = file_sensor_mat.read('../data/benchtesting_PD', 100, 1800, batch=True, normalize_by=np.max)
 
-#plots
-plt.figure()
-leg = []
-plt.plot(ansys_data.fft_freqs, ansys_data.fft_data_dB)
-leg.append('ansys')
-plt.plot(ni_data.fft_freqs, ni_data.fft_data_dB)
-leg.append('NI hardware')
-plt.plot(qx_data.fft_freqs, qx_data.fft_data_dB)
-leg.append('QX hardware')
-plt.legend(leg)
-plt.title('IM spectra')
-plt.xlabel('Frequency [Hz]')
-plt.ylabel('Magnitude [dB]')
-plt.xlim([40,80])
-plt.ylim([-100,8])
-plt.grid()
-plt.show()
+fig_counter = 1 #counter to define the figure plot
+for batch_idx in range(len(ni_data.batch_data)):
+    for line_idx in [0,2,7]:
+        batch_obj = ni_data.batch_data[batch_idx] #load the current NIHardwareData object
+        qx_obj = qx_data.batch_data[line_idx] #load the current SensorData object
+
+        #plots
+        plt.figure(fig_counter)
+        plt.subplot(3,1,1)
+        leg = []
+        lower_freq = 40
+        upper_freq = 80
+        ansys_mask = (ansys_data.fft_freqs>=lower_freq)&(ansys_data.fft_freqs<=upper_freq)
+        plt.plot(ansys_data.fft_freqs[ansys_mask], ansys_data.fft_data_dB[ansys_mask])
+        leg.append('Simulation')
+        ni_mask = (batch_obj.fft_freqs>=lower_freq)&(batch_obj.fft_freqs<=upper_freq)
+        plt.plot(batch_obj.fft_freqs[ni_mask], batch_obj.fft_data_dB[ni_mask])
+        leg.append(f'NI hardware at exp. {batch_idx+1}')
+        qx_mask = (qx_obj.fft_freqs >= lower_freq) & (qx_obj.fft_freqs <= upper_freq)
+        plt.plot(qx_obj.fft_freqs[qx_mask], qx_obj.fft_data_dB[qx_mask])
+        leg.append(f'QX hardware at exp. {line_idx+1}')
+        plt.title(f'Line current spectra')
+        plt.ylabel('Magnitude [dB]')
+        plt.legend(leg)
+        plt.grid()
+        plt.xlim([lower_freq,upper_freq])
+
+        plt.subplot(3,1,2)
+        leg = []
+        lower_freq = 280
+        upper_freq = 320
+        ansys_mask = (ansys_data.fft_freqs>=lower_freq)&(ansys_data.fft_freqs<=upper_freq)
+        plt.plot(ansys_data.fft_freqs[ansys_mask], ansys_data.fft_data_dB[ansys_mask])
+        leg.append('Simulation')
+        ni_mask = (batch_obj.fft_freqs>=lower_freq)&(batch_obj.fft_freqs<=upper_freq)
+        plt.plot(batch_obj.fft_freqs[ni_mask], batch_obj.fft_data_dB[ni_mask])
+        leg.append(f'NI hardware at exp. {batch_idx + 1}')
+        qx_mask = (qx_obj.fft_freqs >= lower_freq) & (qx_obj.fft_freqs <= upper_freq)
+        plt.plot(qx_obj.fft_freqs[qx_mask], qx_obj.fft_data_dB[qx_mask])
+        leg.append(f'QX hardware at exp. {line_idx + 1}')
+        plt.ylabel('Magnitude [dB]')
+        plt.legend(leg)
+        plt.grid()
+        plt.xlim([lower_freq,upper_freq])
+
+        plt.subplot(3,1,3)
+        leg = []
+        lower_freq = 400
+        upper_freq = 440
+        ansys_mask = (ansys_data.fft_freqs>=lower_freq)&(ansys_data.fft_freqs<=upper_freq)
+        plt.plot(ansys_data.fft_freqs[ansys_mask], ansys_data.fft_data_dB[ansys_mask])
+        leg.append('Simulation')
+        ni_mask = (batch_obj.fft_freqs>=lower_freq)&(batch_obj.fft_freqs<=upper_freq)
+        plt.plot(batch_obj.fft_freqs[ni_mask], batch_obj.fft_data_dB[ni_mask])
+        leg.append(f'NI hardware at exp. {batch_idx + 1}')
+        qx_mask = (qx_obj.fft_freqs >= lower_freq) & (qx_obj.fft_freqs <= upper_freq)
+        plt.plot(qx_obj.fft_freqs[qx_mask], qx_obj.fft_data_dB[qx_mask])
+        leg.append(f'QX hardware at exp. {line_idx + 1}')
+        plt.ylabel('Magnitude [dB]')
+        plt.xlabel('Frequency [Hz]')
+        plt.legend(leg)
+        plt.grid()
+        plt.xlim([lower_freq,upper_freq])
+        plt.show()
+
+        fig_counter += 1 #update the counter

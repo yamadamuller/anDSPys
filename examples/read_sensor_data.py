@@ -19,18 +19,17 @@ ns = int(config_file["motor-configs"]["ns"]) #synchronous speed
 
 #The function responsible for loading the .MAT sensor data output belongs to the file_sensor_mat package.
 #Call it with the required arguments and store the output into a variable.
-data_directory = '../data/benchtesting_PD' #define the directory where your .csv data is located
+data_directory = '../data/benchtesting_PD/experimento_1_carga_100__19200Hz_19200Hz.MAT' #define the directory where your .csv data is located
 load = 100 #define which simulation you want to load based on the load percentage
-n_exp = 3 #define which experiment you want to load based on its number
+n_periods = 1500 #define how many peroids will be extracted from the current signal
 #For more information on how to format the data, see the README file in the "Running the framework" section
 try:
     data = file_sensor_mat.read(data_directory, load, ns,
-                                experiment_num=n_exp, fm=fm) #run the file reading function
+                                fm=fm, n_periods=n_periods, normalize_by=np.max) #run the file reading function
 except Exception as e:
     raise RuntimeError(f'[read_sensor_data] Read function failed with {e}')
 #Optional arguments:
 #-> fm: fundamental frequency (60 Hz by default)
-#-> experiment_number: 1 by default
 #-> transient: flag to filter out, or not, the transient in the electrical signals (False by default = Filter out)
 #-> batch: flag to load all the sensor data in a batch (False by default)
 #-> normalize_by: pass which function will be used to normalize the FFT (len, np.max, ...)

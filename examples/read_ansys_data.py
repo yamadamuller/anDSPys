@@ -21,9 +21,10 @@ ns = int(config_file["motor-configs"]["ns"]) #synchronous speed
 #Call it with the required arguments and store the output into a variable.
 data_directory = '../data/1_broken_bar' #define the directory where your .csv data is located
 load = 100 #define which simulation you want to load based on the load percentage
+n_periods = 600 #define how many peroids will be extracted from the current signal
 #For more information on how to format the data, see the README file in the "Running the framework" section
 try:
-    data = file_csv.read(data_directory, load, ns, fm=fm) #run the file reading function
+    data = file_csv.read(data_directory, load, ns, fm=fm, n_periods=n_periods, normalize_by=np.max) #run the file reading function
 except Exception as e:
     raise RuntimeError(f'[read_ansys_data] Read function failed with {e}')
 #Optional arguments:
@@ -76,7 +77,7 @@ plt.show()
 
 #Or, you might want to process only the current in the time domain
 i_data = data.i_motor #current in A
-t_data = data.i_time_grid #time in s
+t_data = data.time_grid #time in s
 plt.figure(2)
 plt.plot(t_data, i_data)
 plt.xlim([4,4.5]) #reduce the x-axis to improve visualization

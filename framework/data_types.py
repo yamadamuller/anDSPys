@@ -3,7 +3,6 @@ import numpy as np
 from framework import electromag_utils, dsp_utils
 from scipy.io import loadmat
 import yaml
-import re
 import datetime
 
 def load_config_file(config_file):
@@ -50,17 +49,31 @@ def read_NIHW_data(file):
 
     return np.array(data) #convert the data list into a numpy array
 
+def filter_integer_period(time_samples, n_periods, fm=60):
+    '''
+    :param time_samples: the time samples of the electrical signal
+    :param n_periods: number of periods
+    :param fm: fundamental frequency (60 Hz by default)
+    :return: the index of the last sample of the n_periods
+    '''
+    time_disp = time_samples[0]+(n_periods/fm) #find the amount of time elapsed for the amount of periods
+    if time_disp <= time_samples[-1]: #displacement must be smaller or equal to the existing time samples
+        return np.argmin(np.abs(time_samples-time_disp)) #find the index of the last period sample
+    else:
+        raise ValueError(f'[filter_integer_period] n_periods={n_periods} is invalid for the signal')
+
 class SimuData:
     '''
     class that stores all the required data from a finite element simulation from ANSYS
     '''
-    def __init__(self, current_data, speed_data, load_percentage, ns, fm=60, normalize_by=np.max):
+    def __init__(self, current_data, speed_data, load_percentage, ns, fm=60, n_periods=None, normalize_by=np.max):
         '''
         :param current_data: the raw csv current output file from ANSYS in numpy format
         :param speed_data: the raw csv speed output file from ANSYS in numpy format
         :param load_percentage: percentage of the load used in the simulation [%]
         :param ns: synchronous speed of the simulated motor [rpm]
         :param fm: fundamental frequency [Hz] (60 Hz by default)
+        :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
         :param normalize_by: which function will be used to normalize the FFT
         '''
         #check if current_data is a numpy array
@@ -81,12 +94,23 @@ class SimuData:
         self.load = load_percentage
         self.ns = ns
         self.fm = fm
+        filter_periods = False #flag to apply integer period filtering or not
+        if n_periods is not None:
+            self.n_periods = int(n_periods)
+            filter_periods = True #update the flag
 
         #define current and time samples from the raw data
         if current_flag:
             self.i_motor = self.current_data[:,1] #extract the phase current samples
-            self.i_time_grid = self.current_data[:,0] #extract the time samples
-            self.Ts = self.i_time_grid[1]-self.i_time_grid[0] #sampling time
+            self.time_grid = self.current_data[:,0] #extract the time samples
+
+            #extract the n integer periods if required
+            if filter_periods:
+                int_period_idx = filter_integer_period(self.time_grid, self.n_periods, fm=self.fm) #find the index of the last sample in the defined periods
+                self.time_grid = self.time_grid[:int_period_idx+1]
+                self.i_motor = self.i_motor[:int_period_idx+1]
+
+            self.Ts = self.time_grid[1]-self.time_grid[0] #sampling time
             self.fs = 1/self.Ts #sampling frequency
             self.Res = self.fs/len(self.i_motor) #resolution
 
@@ -99,6 +123,13 @@ class SimuData:
         if speed_flag:
             self.speed_motor = self.speed_data[:,1] #extract the speed samples
             self.speed_time_grid = self.speed_data[:,0] #extract the time samples
+
+            #extract the n integer periods if required
+            if filter_periods:
+                int_period_idx = filter_integer_period(self.speed_time_grid, self.n_periods, fm=self.fm) #find the index of the last sample in the defined periods
+                self.speed_motor = self.speed_motor[:int_period_idx+1]
+                self.speed_time_grid = self.speed_time_grid[:int_period_idx+1]
+
             self.nr = electromag_utils.compute_avg_rotor_speed(self.speed_motor, self.speed_time_grid, self.fm) #compute the avg rotor speed
             self.slip = electromag_utils.compute_slip(self.ns, self.nr) #compute the slip
 
@@ -151,11 +182,12 @@ class LabData:
         self.fft_r_data_dB = dsp_utils.apply_dB(self.fft_r_data_amp) #convert from amplitude to dB
 
 class SensorData:
-    def __init__(self, raw_data, ns, fm=60, transient=False, normalize_by=np.max):
+    def __init__(self, raw_data, ns, fm=60, n_periods=None, transient=False, normalize_by=np.max):
         '''
         :param raw_data: the raw .MAT output file from lab controlled tests in numpy format
         :param ns: synchronous speed of the simulated motor [rpm]
         :param fm: fundamental frequency [Hz] (60 Hz by default)
+        :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
         :param transient: flag to filter out the transient
         :param normalize_by: which function will be used to normalize the FFT
         '''
@@ -168,11 +200,16 @@ class SensorData:
         #Input arguments
         self.raw_data = raw_data
         self.fm = fm
+        filter_periods = False #flag to apply integer period filtering or not
+        if n_periods is not None:
+            self.n_periods = int(n_periods)
+            filter_periods = True #update the flag
         self.ns = ns
 
         #define current
         self.time_grid = self.raw_data["Channel_1_Data"] #extract the time samples
 
+        #handle transient in the signal
         if transient:
             self.transient_mask = (self.time_grid>=0) #mask in order to keep the transient
         else:
@@ -183,6 +220,25 @@ class SensorData:
         self.i_r = int(config_file["sensor-configs"]["current_relation"])*self.raw_data["Channel_5_Data"][self.transient_mask] #extract the R-phase current samples
         self.i_s = int(config_file["sensor-configs"]["current_relation"])*self.raw_data["Channel_6_Data"][self.transient_mask] #extract the S-phase current samples
         self.i_t = int(config_file["sensor-configs"]["current_relation"])*self.raw_data["Channel_7_Data"][self.transient_mask] #extract the T-phase current samples
+        self.v_r = self.raw_data["Channel_2_Data"][self.transient_mask] #extract the R-phase voltage samples
+        self.v_s = self.raw_data["Channel_3_Data"][self.transient_mask] #extract the S-phase voltage samples
+        self.v_t = self.raw_data["Channel_4_Data"][self.transient_mask] #extract the T-phase voltage samples
+        self.torque = self.raw_data["Channel_8_Data"][self.transient_mask] #extract the torque samples
+        self.speed_motor = self.raw_data["Channel_9_Data"][self.transient_mask] #extract the speed samples
+
+        #extract the n integer periods if required
+        if filter_periods:
+            int_period_idx = filter_integer_period(self.time_grid, self.n_periods, fm=self.fm) #find the index of the last sample in the defined periods
+            self.time_grid = self.time_grid[:int_period_idx+1]
+            self.i_r =  self.i_r[:int_period_idx+1]
+            self.i_s = self.i_s[:int_period_idx+1]
+            self.i_t = self.i_t[:int_period_idx+1]
+            self.v_r = self.v_r[:int_period_idx+1]
+            self.v_s = self.v_s[:int_period_idx+1]
+            self.v_t = self.v_t[:int_period_idx+1]
+            self.torque = self.torque[:int_period_idx+1]
+            self.speed_motor = self.speed_motor[:int_period_idx+1]
+
         self.Ts = self.time_grid[1]-self.time_grid[0] #sampling time
         self.fs = 1/self.Ts #sampling frequency
         self.Res = self.fs/len(self.i_r) #resolution
@@ -196,49 +252,49 @@ class SensorData:
         self.fft_r_data_amp = dsp_utils.compute_FFT(self.i_r, normalize_by=normalize_by) #compute the FFT of the R phase
         self.fft_r_data_dB = dsp_utils.apply_dB(self.fft_r_data_amp) #convert from amplitude to dB
 
-        #define other motor values
-        self.v_r = self.raw_data["Channel_2_Data"][self.transient_mask] #extract the R-phase voltage samples
-        self.v_s = self.raw_data["Channel_3_Data"][self.transient_mask] #extract the S-phase voltage samples
-        self.v_t = self.raw_data["Channel_4_Data"][self.transient_mask] #extract the T-phase voltage samples
-        self.torque = self.raw_data["Channel_8_Data"][self.transient_mask] #extract the torque samples
-        self.speed_motor = self.raw_data["Channel_9_Data"][self.transient_mask] #extract the speed samples
+        #define electromagnetic motor values
         self.speed_time_grid = self.time_grid #extract the time samples
         self.nr = electromag_utils.compute_avg_rotor_speed(self.speed_motor, self.speed_time_grid, self.fm) #compute the avg rotor speed
         self.slip = electromag_utils.compute_slip(self.ns, self.nr) #compute the slip
 
 class BatchSensorData:
-    def __init__(self, filedir, load_percentage, ns, fm=60, transient=False, normalize_by=np.max):
+    def __init__(self, filelist, load_percentage, ns, fm=60, n_periods=None, transient=False, normalize_by=np.max):
         '''
-        :param filedir: path to the .csv output file in the local filesystem
+        :param filelist: list with the .MAT output file in the local filesystem
         :param load_percentage: percentage of the load used in the simulation [%]
         :param ns: synchronous speed of the simulated motor [rpm]
         :param fm: fundamental frequency [Hz] (60 Hz by default)
+        :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
         :param transient: flag to filter out the transient
         :param normalize_by: which function will be used to normalize the FFT
         '''
         #Input arguments
-        self.filedir = filedir #directory with the batch of data
+        self.batch_list = filelist #list with the batch of data
         self.load_percentage = load_percentage #load percentage to append data
-        self.batch_list = os.listdir(self.filedir) #list all the directory files
-        self.batch_list = [os.path.join(filedir, batch_file) for batch_file in self.batch_list if str(load_percentage) in batch_file] #filter all the files with the same load percentage
         self.ns = ns
         self.fm = fm
         self.transient = transient
 
         #Compute the average of the current and voltage in every phase
         self.batch_data = np.zeros_like(self.batch_list, dtype=SensorData) #list to append all the SensorData structures computed per file
-        for sensor_file in self.batch_list:
-            find_num = [expn.start() for expn in re.finditer('_', sensor_file)] #find where the experiment number lies in the filename
-            num_idx = int(sensor_file[find_num[1]+1:find_num[2]])-1 #convert the experiment num into index
-            curr_raw_data = loadmat(sensor_file) #read the raw .MAT sensor_file into dictionary format
-            self.batch_data[num_idx] = SensorData(curr_raw_data, self.ns, self.fm, self.transient, normalize_by=normalize_by) #append the data structure with the lab tested output
-            print(f'[BatchSensorData] File {sensor_file} read!')
+        for batch_idx in range(len(self.batch_list)):
+            batch_file = self.batch_list[batch_idx] #load the current file based on the index
+
+            #check if file is valid
+            if not os.path.isfile(batch_file):
+                raise ValueError(f'[BatchSensorData] File {batch_file} does not exist!')
+
+            curr_raw_data = loadmat(batch_file) #read the raw .MAT sensor_file into dictionary format
+            self.batch_data[batch_idx] = SensorData(curr_raw_data, self.ns, fm=self.fm, n_periods=n_periods, transient=self.transient,
+                                                    normalize_by=normalize_by) #append the data structure with the lab tested output
+            print(f'[BatchSensorData] File {batch_file} read!')
 
 class NIHardwareData:
-    def __init__(self, file, fm=60, normalize_by=np.max):
+    def __init__(self, file, fm=60, n_periods=None, normalize_by=np.max):
         '''
         :param file: path to the .txt output file in the local filesystem
         :param fm: fundamental frequency [Hz] (60 Hz by default)
+        :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
         :param normalize_by: which function will be used to normalize the FFT
         '''
         #Input arguments
@@ -247,9 +303,20 @@ class NIHardwareData:
 
         self.file = file #path to the
         self.fm = fm
+        filter_periods = False #flag to apply integer period filtering or not
+        if n_periods is not None:
+            self.n_periods = int(n_periods)
+            filter_periods = True #update the flag
         self.raw_data = read_NIHW_data(file) #read the .txt file content into a numpy array
         self.time_grid = self.raw_data[:,0] #time samples
         self.i_motor = self.raw_data[:,1] #current samples
+
+        #extract the n integer periods if required
+        if filter_periods:
+            int_period_idx = filter_integer_period(self.time_grid, self.n_periods, fm=self.fm) #find the index of the last sample in the defined periods
+            self.time_grid = self.time_grid[:int_period_idx+1]
+            self.i_motor = self.i_motor[:int_period_idx+1]
+
         self.Ts = self.time_grid[1]-self.time_grid[0] #sampling time
         self.fs = 1/self.Ts #sampling frequency
         self.Res = self.fs/len(self.i_motor) #resolution
@@ -260,15 +327,16 @@ class NIHardwareData:
         self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
 
 class BatchNIHardwareData:
-    def __init__(self, file_list, fm=60, normalize_by=np.max):
+    def __init__(self, file_list, fm=60, n_periods=None, normalize_by=np.max):
         '''
         :param file_list: list containing all the files to append in the batch
         :param fm: fundamental frequency [Hz] (60 Hz by default)
+        :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
         :param normalize_by: which function will be used to normalize the FFT
         '''
         self.file_list = file_list
         self.fm = fm
         self.batch_data = np.zeros_like(self.file_list, dtype=NIHardwareData) #list to append all the NIHardwareData structures computed per file
         for file_idx in range(len(file_list)):
-            self.batch_data[file_idx] = NIHardwareData(file_list[file_idx], fm=self.fm, normalize_by=normalize_by) #append the data structure with the hardware output
+            self.batch_data[file_idx] = NIHardwareData(file_list[file_idx], fm=self.fm, n_periods=n_periods, normalize_by=normalize_by) #append the data structure with the hardware output
             print(f'[BatchNIHardwareData] File {file_list[file_idx]} read!')

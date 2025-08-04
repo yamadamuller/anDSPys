@@ -3,12 +3,13 @@ import os
 from framework import data_types
 import numpy as np
 
-def read(filedir, load_percentage, ns, fm=60, normalize_by=np.max):
+def read(filedir, load_percentage, ns, fm=60, n_periods=None, normalize_by=np.max):
     '''
     :param filedir: path to the .csv output file in the local filesystem
     :param load_percentage: percentage of the load used in the simulation [%]
     :param ns: synchronous speed of the simulated motor [rpm]
     :param fm: fundamental frequency [Hz] (60 Hz by default)
+    :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
     :param normalize_by: which function will be used to normalize the FFT
     :return: SimuData structure with the required data from the simulation
     '''
@@ -41,5 +42,5 @@ def read(filedir, load_percentage, ns, fm=60, normalize_by=np.max):
     else:
         speed_data = pd.read_csv(speed_file).to_numpy()  #read the raw csv file and convert to numpy
 
-    data = data_types.SimuData(current_data, speed_data, int(load_percentage), ns, fm, normalize_by=normalize_by) #create the data structure with the simulation output
+    data = data_types.SimuData(current_data, speed_data, int(load_percentage), ns, fm=fm, n_periods=n_periods, normalize_by=normalize_by) #create the data structure with the simulation output
     return data

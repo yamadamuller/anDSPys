@@ -2,10 +2,11 @@ import os
 from framework import data_types
 import numpy as np
 
-def read(file, fm=60, batch=False, normalize_by=np.max):
+def read(file, fm=60, n_periods=None, batch=False, normalize_by=np.max):
     '''
     :param file: path to the .txt output file in the local filesystem
     :param fm: fundamental frequency [Hz] (60 Hz by default)
+    :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
     :param batch: compute the data as the average from multiple experiments
     :param normalize_by: which function will be used to normalize the FFT
     :return: NIHardwareData structure with the required data from the lab testing
@@ -20,8 +21,8 @@ def read(file, fm=60, batch=False, normalize_by=np.max):
             raise ValueError(f'[file_txt] File {file} does not exist!')
 
     if not batch:
-        data = data_types.NIHardwareData(file, fm=fm, normalize_by=normalize_by) #create the data structure with the hardware output
+        data = data_types.NIHardwareData(file, fm=fm, n_periods=n_periods, normalize_by=normalize_by) #create the data structure with the hardware output
     else:
-        data = data_types.BatchNIHardwareData(file, fm=fm, normalize_by=normalize_by) #compile the batch of data available
+        data = data_types.BatchNIHardwareData(file, fm=fm, n_periods=n_periods, normalize_by=normalize_by) #compile the batch of data available
 
     return data

@@ -8,8 +8,8 @@ from framework import file_csv
 import time
 
 #data = loadmat('../data/ia.mat')['ia'].squeeze() #load the current data into numpy array
-simu_dir = "../data/1_broken_bar"  #path to the directory with the simulation data
-simu_data = file_csv.read(simu_dir, 100, 1800, fm=60, normalize_by=np.max) #read the simulation data
+simu_dir = "../data/1_broken_bar_03082025/i_phase/noR"  #path to the directory with the simulation data
+simu_data = file_csv.read(simu_dir, 100, 1800, fm=60, n_periods=600, normalize_by=np.max) #read the simulation data
 data = simu_data.i_motor
 
 t_init = time.time()
@@ -141,23 +141,28 @@ leg = []
 plt.plot(simu_data.fft_freqs, simu_data.fft_data_dB)
 #plt.axvline(l_band, linestyle='dotted', color='black')
 #plt.axvline(r_band, linestyle='dotted', color='black')
-plt.xlim([56,64])
+plt.xlim([50,70])
 plt.ylabel('Magnitude [dB]')
 plt.xlabel('Frequency [Hz]')
 plt.title('FFT')
-plt.legend(leg)
+#plt.legend(leg)
 plt.grid()
 
 plt.subplot(2,1,2)
+log_mu += 50
+f_sample -= fc
 leg = []
-plt.stem(f_sample-fc, log_mu+50, markerfmt=" ")
+plt.stem(f_sample, log_mu, markerfmt=" ")
 #plt.axvline(l_band, linestyle='dotted', color='black')
 #plt.axvline(r_band, linestyle='dotted', color='black')
-plt.xlim([56,64])
+plt.xlim([50,70])
 plt.ylabel('Magnitude [dB]')
 plt.xlabel('Frequency [Hz]')
-plt.title('VBI_offgrid_CGDP')
-plt.legend(leg)
+plt.title('SBL')
+#plt.legend(leg)
 plt.grid()
 
 plt.show()
+
+#fault_detect
+print(f'[SBL_fault_detect] Bands detected aboved 0dB = {len(log_mu[log_mu>0])}')

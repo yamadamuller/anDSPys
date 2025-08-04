@@ -11,12 +11,12 @@ fm = 60 #fundamental frequency
 harm_comps = [1,5,7] #harmonic components
 
 #Read the data and compute the FFT and DFT
-directory = '../data/benchtesting_PD' #directory with data is located in the directory prior
-data = file_sensor_mat.read(directory, 100, 1800, 1, fm) #organize the output in a SimuData structure
+directory = '../data/benchtesting_PD/experimento_1_carga_100__19200Hz_19200Hz.MAT' #directory with data is located in the directory prior
+data = file_sensor_mat.read(directory, 100, 1800, fm=fm, normalize_by=np.max) #organize the output in a SimuData structure
 all_peaks = [] #list to append all the results
 
 t_init = time.time()
-peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-60, min_peak_dist=3, max_peaks=3) #run the peak detection routine
+peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-80, min_peak_dist=3, max_peaks=3) #run the peak detection routine
 print(f'computing time for peak detection algorithm = {time.time()-t_init} s')
 
 all_peaks.append(peaks) #update the output list
