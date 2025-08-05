@@ -20,7 +20,6 @@ fm = int(config_file["motor-configs"]["fm"]) #fundamental frequency
 #Call it with the required arguments and store the output into a variable.
 data_directory = '../data/NI/i_phase/BQ_PC_1.txt' #define the path to your .txt data is located
 n_periods = 500 #define how many peroids will be extracted from the current signal
-#For more information on how to format the data, see the README file in the "Running the framework" section
 try:
     data = file_txt.read(data_directory, fm=fm, n_periods=n_periods, normalize_by=np.max) #run the file reading function
 except Exception as e:

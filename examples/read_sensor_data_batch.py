@@ -24,7 +24,6 @@ data_directory = ['../data/benchtesting_PD/experimento_1_carga_100__19200Hz_1920
              '../data/benchtesting_PD/experimento_3_carga_100__19200Hz_19200Hz.MAT'] #directory with data is located in the directory prior
 load = 100 #define which simulation you want to load based on the load percentage
 n_periods = 1200 #define how many peroids will be extracted from the current signal
-#For more information on how to format the data, see the README file in the "Running the framework" section
 try:
     data = file_sensor_mat.read(data_directory, load, ns,
                                 fm=fm, n_periods=n_periods, batch=True) #run the file reading function
