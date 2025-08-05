@@ -208,5 +208,10 @@ __marimo__/
 
 #data directory
 data/
-test_pseudo_phase_unwrapping.py
-data.zip
+1bb_ansys_faultsideband_detection.py
+1bb_NI_faultsideband_detection.py
+1bb_quantumx_faultsideband_detection.py
+test_labtest_peak_finder.py
+test_dispersion_peak_finder.py
+test_distance_peak_finder.py
+test_fault_detection.py

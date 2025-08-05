@@ -5,12 +5,12 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 #Load the files
-exp_num = 1
+exp_num = 6
 n_periods = 1500
 qx66_file = f'../data/benchtesting_PD/experimento_{exp_num}_carga_66__19200Hz_19200Hz.MAT'
 qx66_data = file_sensor_mat.read(qx66_file,66, 1800, n_periods=n_periods)
 qx33_file = f'../data/benchtesting_PD/experimento_{exp_num}_carga_33__19200Hz_19200Hz.MAT'
-qx33_data = file_sensor_mat.read(qx66_file,33, 1800, n_periods=n_periods)
+qx33_data = file_sensor_mat.read(qx33_file,33, 1800, n_periods=n_periods)
 
 #compute the average for all the n_periods
 qx66_vel_avg = np.mean(qx66_data.speed_motor)
