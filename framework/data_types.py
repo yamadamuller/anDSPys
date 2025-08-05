@@ -66,7 +66,7 @@ class SimuData:
     '''
     class that stores all the required data from a finite element simulation from ANSYS
     '''
-    def __init__(self, current_data, speed_data, load_percentage, ns, fm=60, n_periods=None, normalize_by=np.max):
+    def __init__(self, current_data, speed_data, load_percentage, ns, fm=60, n_periods=None, transient=False, normalize_by=np.max):
         '''
         :param current_data: the raw csv current output file from ANSYS in numpy format
         :param speed_data: the raw csv speed output file from ANSYS in numpy format
@@ -74,6 +74,7 @@ class SimuData:
         :param ns: synchronous speed of the simulated motor [rpm]
         :param fm: fundamental frequency [Hz] (60 Hz by default)
         :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
+        :param transient: flag to filter out the transient in the signal (False by default)
         :param normalize_by: which function will be used to normalize the FFT
         '''
         #check if current_data is a numpy array
@@ -104,6 +105,12 @@ class SimuData:
             self.i_motor = self.current_data[:,1] #extract the phase current samples
             self.time_grid = self.current_data[:,0] #extract the time samples
 
+            #extract the transient if required
+            if not transient:
+                transient_mask = (self.time_grid>=1) #mask the signal from 1s
+                self.i_motor = self.i_motor[transient_mask]
+                self.time_grid = self.time_grid[transient_mask]
+
             #extract the n integer periods if required
             if filter_periods:
                 int_period_idx = filter_integer_period(self.time_grid, self.n_periods, fm=self.fm) #find the index of the last sample in the defined periods
@@ -123,6 +130,12 @@ class SimuData:
         if speed_flag:
             self.speed_motor = self.speed_data[:,1] #extract the speed samples
             self.speed_time_grid = self.speed_data[:,0] #extract the time samples
+
+            #extract the transient if required
+            if not transient:
+                transient_mask = (self.speed_time_grid >= 1) #mask the signal from 1s
+                self.speed_motor = self.speed_motor[transient_mask]
+                self.speed_time_grid = self.speed_time_grid[transient_mask]
 
             #extract the n integer periods if required
             if filter_periods:
