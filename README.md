@@ -42,6 +42,5 @@ You can download a set of test files in this [link](https://drive.google.com/dri
 - **[1_broken_bar](https://drive.google.com/drive/folders/1Sv_bk1Lfg1bkRUozU1TNEPTfXunYXlz8?usp=sharing)**: a simulated induction motor with 1 broken bar (ns = 1800rpm; fm = 60Hz)
 - **[benchtesting_PD](https://drive.google.com/drive/folders/1ic_273LteHKfB-5ORWXuVU8YdvaGqfOL?usp=sharing)**: a bench-tested induction motor with 1 broken bar (ns = 1800rpm; fm = 60Hz)
 
-
 # Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
