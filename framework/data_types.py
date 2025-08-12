@@ -95,8 +95,8 @@ def loadmat_laipse_v7_3(file, torque, exp_num, Ts, fm=60, n_periods=None, transi
         n_periods = int(n_periods)
         filter_periods = True #update the flag
 
-    output_data = [] #list to append every value array extracted from the matlab struct
-    keys_of_interest = ['Ia', 'Ib', 'Ic'] #search only for timeseries regarding the given electrical values (update if needed)
+    output_data = {} #dictionary to append every value array extracted from the matlab struct
+    keys_of_interest = ['Ia', 'Ib', 'Ic', 'Va', 'Vb', 'Vc'] #search only for timeseries regarding the given electrical values (update if needed)
     with h5py.File(file, 'r') as f:
         keys = [key for key in f.keys()] #extract the torque-based keys from the struct
         for torque_data in f[keys[-1]].items(): #iterate over the keys to find the one that matches the input argument
@@ -106,7 +106,6 @@ def loadmat_laipse_v7_3(file, torque, exp_num, Ts, fm=60, n_periods=None, transi
                         curr_ev_group = torque_data[1][electrical_data] #load the current electrucal value from the struct in frame format
                         curr_ev_group = curr_ev_group[:] #flat data
                         curr_ev_group = curr_ev_group.flatten() #ensure flat in case of 2D data
-                        curr_ev_data = [] #list to append the electrical value and the timestamps of the current processed group
                         exp_counter = 0 #counter to search for the input experiment number
                         for experiment in curr_ev_group: #iterate over the available experiments
                             if exp_counter == exp_num:
@@ -128,11 +127,14 @@ def loadmat_laipse_v7_3(file, torque, exp_num, Ts, fm=60, n_periods=None, transi
                                     time_grid = time_grid[:int_period_idx+1]
                                     curr_exp_data = curr_exp_data[:int_period_idx+1]
 
-                                curr_ev_data.append([curr_exp_data[:,0], time_grid]) #save the processed current and timestamps
+                                #Add the values to the output dictionary
+                                output_data[electrical_data.lower()] = curr_exp_data[:,0] #add the current value to the dict w/ "electrical data" as the key in lowercase
+                                if 'time_grid' not in output_data.keys():
+                                    output_data['time_grid'] = time_grid #add the time grid in case it does not exist
+
                                 break
 
                             exp_counter += 1 #increase the counter if experiment number is not yet met
-                        output_data.append(curr_ev_data) #append all processed
     return output_data
 
 class SimuData:
@@ -426,10 +428,10 @@ class LaipseData:
             raise ValueError(f'[LaipseData] Experiment number must lie between 1 and 10, {exp_num} is invalid!')
 
         raw_data = loadmat_laipse_v7_3(self.file, self.torque, self.exp_num, self.Ts, fm=self.fm, n_periods=self.n_periods, transient=transient) #load the struct(s) into memory based on the torque argument
-        self.time_grid = raw_data[0][0][1] #timesample
-        self.i_a = raw_data[0][0][0] #current in the A-phase
-        self.i_b = raw_data[1][0][0] #current in the B-phase
-        self.i_c = raw_data[2][0][0] #current in the C-phase
+        self.time_grid = raw_data['time_grid'] #timesample
+        self.i_a = raw_data['ia'] #current in the A-phase
+        self.i_b = raw_data['ib'] #current in the B-phase
+        self.i_c = raw_data['ic'] #current in the C-phase
 
         #compute the spectra of the currents
         self.fft_freqs = np.linspace(-self.fs/2, self.fs/2, len(self.i_a)) #FFT frequencies based on the sampling

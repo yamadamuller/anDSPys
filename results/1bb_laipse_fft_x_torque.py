@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 file = '../data/narco/struct_r1b_R1.mat' #directory with data is located in the directory prior
 experiment = 5 #number of the experiment
 n_periods = 900 #number of integer periods to extract from the currents
-step = 0.5 #torque step
 torque = 4 #N.m
 data = file_mat.read(file, torque, n_periods=n_periods, exp_num=experiment, normalize_by=np.max) #organize the output in a LaipseData structure
 
