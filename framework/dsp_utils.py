@@ -131,6 +131,21 @@ def backwards_num_spectrum_gradient(spectrum, eps=1):
     backward = np.roll(spectrum, eps) #lagged signal x[i-1]
     return (spectrum - backward)/eps #backwards finite difference (x[i+1] - x[i-1])/2eps
 
+def forward_num_spectrum_gradient(spectrum, eps=1):
+    '''
+    :param spectrum: spectrum of the signal in array format
+    :param eps: epsilon (smallest change possible)
+    :return: numerical gradient computed by forward difference
+    '''
+    #check if speed_data is a numpy array
+    if not isinstance(spectrum, np.ndarray):
+        raise TypeError(f'[num_spectrum_gradient] spectrum input required to be a numpy array!')
+    if len(spectrum) == 0:
+        raise ValueError(f'[num_spectrum_gradient] spectrum passed as an empty array!')
+
+    forward = np.roll(spectrum, -eps) #advanced signal x[i-1]
+    return (forward-spectrum)/eps #backwards finite difference (x[i+1] - x[i-1])/2eps
+
 def central_num_spectrum_hessian(spectrum, eps=1):
     '''
     :param spectrum: spectrum of the signal in array format
@@ -271,17 +286,16 @@ def dispersion_find_peaks(data, lower_bound_idx, upper_bound_idx, kernel_size=No
     else:
         return peaks
 
-def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=None, h_threshold=None, min_peak_dist=None, max_peaks=None, harm_component=None, valley=False):
+def slidingmax_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=None, h_threshold=None, slidingwindow=None, max_peaks=None, harm_component=None):
     '''
     :param data: framework.data_types.PeakFinderData structure
     :param lower_bound_idx: the index of the boundary of the window (lower side)
     :param upper_bound_idx: the index of the boundary of the window (upper side)
     :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-80dB)
     :param h_threshold: threshold for peak height with respect to its neighboring sample (None by default=0dB)
-    :param min_peak_dist: filter for the tallest peaks distanced by at least the passed value (None by default=2.s.fm)
+    :param slidingwindow: Size of the window that will be used to search for the maximum value (None by default=2.s.fm)
     :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
     :param harm_component: the harmonic component to filter max peaks from (only used if max_peaks is not None)
-    :param valley: flag to add valleys in the peak detection
     :return: the coordinates for the six most significant sideband peaks of the computed harmonic component
     output[n] = coordinates -> [freqs, magnitudes]
     '''
@@ -293,8 +307,8 @@ def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=No
         mag_threshold = -60 #set the magnitude threshold as -60dB
     if not h_threshold:
         h_threshold = 0 #set the height threshold as 0dB
-    if not min_peak_dist:
-        min_peak_dist = np.floor(2*data.slip*data.fm) #the expected distance between peaks given the slope (2.s.fm)
+    if not slidingwindow:
+        slidingwindow = np.floor(2*data.slip*data.fm) #the expected sliding windows size given the slip (2.s.fm)
 
     #Find the peaks within the side defined by the boundary index (bound_idx)
     wind_freqs = data.fft_freqs[lower_bound_idx:upper_bound_idx]
@@ -309,33 +323,22 @@ def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=No
     grad_sign = np.sign(wind_grad) #compute the signs of each value of the first derivative
     grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
 
-    #Evaluate spectrum peaks based on its neighbourhood
-    if not valley:
-        wind_l_upeaks = wind_spectrum>lag_wind_spectrum #check if a sample up peak is greater than its left neighbour
-        wind_r_upeaks = wind_spectrum>adv_wind_spectrum #check if a sample up peak is greater its right neighbour
-        neighbour_mask = wind_l_upeaks&wind_r_upeaks #check for samples where the values are greater than its neighbour and its an upeak
-    else:
-        wind_l_upeaks = wind_spectrum>lag_wind_spectrum  #check if a sample up peak is greater than its left neighbour
-        wind_l_dpeaks = np.abs(wind_spectrum)>np.abs(lag_wind_spectrum)  #check if a sample down peak is greater than its left neighbour
-        wind_r_upeaks = wind_spectrum>adv_wind_spectrum  #check if a sample up peak is greater its right neighbour
-        wind_r_dpeaks = np.abs(wind_spectrum)>np.abs(adv_wind_spectrum)  #check if a sample down peaks is greater its right neighbour
-        neighbour_mask = (wind_l_upeaks|wind_l_dpeaks)&(wind_r_upeaks|wind_r_dpeaks)  #check for samples where the values are greater than its neighbour
-
     #Evaluate height change in the spectrum to infer local maxima
-    height_diff = np.abs(wind_spectrum-adv_wind_spectrum) #absolute value of the height change
-    height_mask = height_diff>=h_threshold #check for samples where its value is greater than its left neighbour
+    r_height_diff = wind_spectrum - adv_wind_spectrum #height change between peak and its right neighbor
+    l_height_diff = wind_spectrum - lag_wind_spectrum #height change between peak and its left neighbor
+    height_mask = (l_height_diff>=h_threshold)&(r_height_diff>=h_threshold) #check for samples where the peak is greater than its neighbours by at least h_threshold
 
     #Extract the peaks
     sign_change_mask = grad_sign_change == 0  #when the first derivative changes from + to -. the sum is 0
     mag_thresh_mask = wind_spectrum >= mag_threshold  #values of the FFT that surpass the magnitude threshold
-    sign_change_mask = neighbour_mask & sign_change_mask & mag_thresh_mask & height_mask  #update the mask where all prior masks are valid
+    sign_change_mask = sign_change_mask & mag_thresh_mask & height_mask  #update the mask where all prior masks are valid
     raw_peaks = wind_spectrum[sign_change_mask]  #every peak magnitude detected by the change of signal in the gradient
     raw_freq_peaks = wind_freqs[sign_change_mask]  #every peak frequency detected by the change of signal in the gradient
     peaks = np.stack((raw_freq_peaks, raw_peaks), axis=1) #stack the peaks as [freqs, coordinates]
 
-    #Extract the tallest peak every (min_peak_dist) window
+    #Extract the tallest peak every (slidingwindow) window
     dist_peaks = [] #list to append the distanced peaks
-    space_search = np.arange(wind_freqs[0], wind_freqs[-1]+min_peak_dist, min_peak_dist) #divide the frequency window into (min_peak_dist) spaces
+    space_search = np.arange(wind_freqs[0], wind_freqs[-1]+slidingwindow, slidingwindow) #divide the frequency window into (slidingwindow) spaces
     for i in range(len(space_search)-1):
         l_freq_bound = space_search[i] #lower frequency boundary inside the search space
         u_freq_bound = space_search[i+1] #upper frequency boundary inside the search space
@@ -358,7 +361,92 @@ def distance_find_peaks(data, lower_bound_idx, upper_bound_idx, mag_threshold=No
     else:
         return peaks
 
-def fft_significant_peaks(data, harm_components, window_size=None, method='distance', kernel_size=None, gamma=None, mag_threshold=None, h_threshold=None, min_peak_dist=None, max_peaks=None, valley=False, gauss_sigma=None):
+def distance_find_peaks(data, harmonic, lower_bound_idx, upper_bound_idx, mag_threshold=None, h_threshold=None, min_peak_dist=None, max_peaks=None, harm_component=None):
+    '''
+    :param data: framework.data_types.PeakFinderData structure
+    :param harmonic: which harmonic is being processed [Hz]
+    :param lower_bound_idx: the index of the boundary of the window (lower side)
+    :param upper_bound_idx: the index of the boundary of the window (upper side)
+    :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-80dB)
+    :param h_threshold: threshold for peak height with respect to its neighboring sample (None by default=0dB)
+    :param min_peak_dist: filter for the tallest peaks distanced by at least the passed value (None by default=2.s.fm)
+    :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
+    :param harm_component: the harmonic component to filter max peaks from (only used if max_peaks is not None)
+    :return: the coordinates for the six most significant sideband peaks of the computed harmonic component
+    output[n] = coordinates -> [freqs, magnitudes]
+    '''
+    if type(data) != data_types.PeakFinderData:
+        raise TypeError(f'[distance_find_peaks] data input must be a PeakFinderData object!')
+    if lower_bound_idx == upper_bound_idx:
+        raise ValueError(f'[distance_find_peaks] lower and upper boundary of the signal window must not be the same!')
+    if not mag_threshold:
+        mag_threshold = -60 #set the magnitude threshold as -60dB
+    if not h_threshold:
+        h_threshold = 0 #set the height threshold as 0dB
+    if not min_peak_dist:
+        min_peak_dist = 0.95*(2*data.slip*data.fm) #the expected distance between peaks given the slip (2.s.fm)
+
+    #Find the peaks within the side defined by the boundary index (bound_idx)
+    wind_freqs = data.fft_freqs[lower_bound_idx:upper_bound_idx]
+    wind_spectrum = data.fft_data_dB[lower_bound_idx:upper_bound_idx]
+    wind_grad = data.fofd[lower_bound_idx:upper_bound_idx] #gradient of the spectrum (first order finite difference)
+
+    #Compute lagged and advanced signals to avoid over-computing
+    lag_wind_spectrum = np.roll(wind_spectrum, 1) #lag the spectrum in one sample
+    adv_wind_spectrum = np.roll(wind_spectrum, -1) #advance the spectrum in one sample
+
+    #Evaluate signal change in the first derivative to infer local maxima
+    grad_sign = np.sign(wind_grad) #compute the signs of each value of the first derivative
+    grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
+
+    #Evaluate height change in the spectrum to infer local maxima
+    r_height_diff = wind_spectrum - adv_wind_spectrum #height change between peak and its right neighbor
+    l_height_diff = wind_spectrum - lag_wind_spectrum #height change between peak and its left neighbor
+    height_mask = (l_height_diff>=h_threshold)&(r_height_diff>=h_threshold) #check for samples where the peak is greater than its neighbours by at least h_threshold
+
+    #Extract the peaks
+    sign_change_mask = grad_sign_change == 0  #when the first derivative changes from + to -. the sum is 0
+    mag_thresh_mask = wind_spectrum >= mag_threshold  #values of the FFT that surpass the magnitude threshold
+    sign_change_mask = sign_change_mask & mag_thresh_mask & height_mask  #update the mask where all prior masks are valid
+    raw_peaks = wind_spectrum[sign_change_mask]  #every peak magnitude detected by the change of signal in the gradient
+    raw_freq_peaks = wind_freqs[sign_change_mask]  #every peak frequency detected by the change of signal in the gradient
+    peaks = np.stack((raw_freq_peaks, raw_peaks), axis=1) #stack the peaks as [freqs, coordinates]
+
+    #Extract the expected True peaks distanced at least 0.9*(2.s.fm) from the harmonic peak
+    harm_peak = np.argmin(np.abs(peaks[:,0]-harmonic)) #find the detected peak of the harmonic
+
+    #process the left peaks
+    last_found_peak = harm_peak #register the index of the last processed peak
+    for lpk in range(len(peaks[:harm_peak,:])):
+        curr_peak_idx = harm_peak-(lpk+1) #register which peak is being processed
+        if np.abs(peaks[last_found_peak,0] - peaks[curr_peak_idx,0]) >= min_peak_dist:
+            last_found_peak = curr_peak_idx #register as a found peak
+        else:
+            peaks[curr_peak_idx,:] = np.array([np.inf, np.inf]) #set the invalid peak as np.inf
+
+    #process the right peaks
+    last_found_peak = harm_peak #register the index of the last processed peak
+    for rpk in range(len(peaks[harm_peak+1:,:])):
+        curr_peak_idx = harm_peak + (rpk+1) #register which peak is being processed
+        if np.abs(peaks[last_found_peak,0] - peaks[curr_peak_idx,0]) >= min_peak_dist:
+            last_found_peak = curr_peak_idx #register as a found peak
+        else:
+            peaks[curr_peak_idx, :] = np.array([np.inf, np.inf]) #set the invalid peak as np.inf
+
+    peaks = peaks[peaks[:,0]!=np.inf] #filter out the unwanted peaks
+
+    if max_peaks:
+        if not harm_component:
+            raise ValueError('[dispersion_find_peaks] To return the {max_peaks} peaks, a harmonic component must be provided!')
+        if len(peaks) >= max_peaks:
+            harm_idx = np.argmin(np.abs(peaks[:,0]-harm_component))  #find the index of the harmonic component peak
+            return peaks[harm_idx-max_peaks:harm_idx+max_peaks+1] #return the max_peaks peaks on each side of the component
+        else:
+            raise ValueError(f'[dispersion_find_peaks] length of the peaks matrix is smaller than max_peaks!')
+    else:
+        return peaks
+
+def fft_significant_peaks(data, harm_components, window_size=None, method='distance', kernel_size=None, gamma=None, mag_threshold=None, h_threshold=None, slidingwindow=None, min_peak_dist=None, max_peaks=None, gauss_sigma=None):
     '''
     :param data: framework.data_types.SimuData structure
     :param harm_components: a list/array containing the harmonic components to iterate over
@@ -368,9 +456,9 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
     :param gamma: threshold for the difference between a peak and the moving average (None by default=1)
     :param mag_threshold: threshold for magnitude values of the FFT [dB] (None by default=-60dB)
     :param h_threshold: threshold for peak height with respect to its neighboring sample (None by default=0dB)
+    :param slidingwindow: Size of the window that will be used to search for the maximum value (None by default)
     :param min_peak_dist: filter for the tallest peaks distanced by at least the passed value (None by default)
     :param max_peaks: the maximum number of significant peaks to extract (None by default=all)
-    :param valley: flag to add valleys in the peak detection
     :param gauss_sigma: apply gaussian smoothing to the spectrum if not None, receive the gaussian standard deviation
     :return: the coordinates for the most significant sideband peaks per harmonic component
     len(output) = 3
@@ -378,15 +466,15 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
     len(coordinates) <= 6 -> [freq, magnitude]
     '''
     if ((type(data) != data_types.SimuData) &
-            (type(data) != data_types.LabData) &
             (type(data) != data_types.SensorData) &
-            (type(data) != data_types.NIHardwareData)):
-        raise TypeError(f'[fft_peak_finder] data input must be a SimuData/LabData object!')
-    if (type(data) == data_types.LabData)|(type(data) == data_types.NIHardwareData):
+            (type(data) != data_types.NIHardwareData) &
+            (type(data) != data_types.LaipseData)):
+        raise TypeError(f'[fft_peak_finder] data input must be a SimuData/SensorData/NIHardwareData/LaipseData object!')
+    if (type(data) == data_types.NIHardwareData)|(type(data) == data_types.LaipseData):
         data.slip = 0 #TODO: placeholder value for now!
     if not window_size:
         window_size = 50 #window of 50 Hz around the harmonic spike
-    methods_available = ['distance', 'dispersion','combined'] #available methods for peak finding
+    methods_available = ['distance', 'dispersion','slidingmax'] #available methods for peak finding
     if method not in methods_available:
         raise ValueError(f'[fft_significant_peaks] Method {method} no available! Try {methods_available}')
     if method == 'dispersion':
@@ -432,13 +520,15 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
         if method == 'dispersion':
             peaks = dispersion_find_peaks(finder_data, lower_idx, upper_idx, kernel_size=kernel_size,
                                           gamma=gamma, mag_threshold=mag_threshold, h_threshold=h_threshold,
-                                          max_peaks=max_peaks, harm_component=n,
-                                          valley=valley) #peaks at the window
-        elif method == 'distance':
-            peaks = distance_find_peaks(finder_data, lower_idx, upper_idx,
+                                          max_peaks=max_peaks, harm_component=n) #peaks at the window
+        elif method == 'slidingmax':
+            peaks = slidingmax_find_peaks(finder_data, lower_idx, upper_idx,
                                         mag_threshold=mag_threshold, h_threshold=h_threshold,
-                                        min_peak_dist=min_peak_dist, max_peaks=max_peaks, harm_component=n,
-                                        valley=valley)  # peaks at the window
+                                        slidingwindow=slidingwindow, max_peaks=max_peaks, harm_component=n) #peaks at the window
+        elif method == 'distance':
+            peaks = distance_find_peaks(finder_data, n, lower_idx, upper_idx,
+                                        mag_threshold=mag_threshold, h_threshold=h_threshold,
+                                        min_peak_dist=min_peak_dist, max_peaks=max_peaks, harm_component=n) #peaks at the window
         peaks_per_component.append(peaks) #concatenate the peaks
 
     return peaks_per_component
