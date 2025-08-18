@@ -1,8 +1,10 @@
+import os.path
 import numpy as np
-from framework import data_types, dsp_utils
+from framework import data_types
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import hilbert
 import pandas as pd
+import datetime
 
 def apply_autocontrast(signal):
     '''
@@ -129,7 +131,7 @@ def backwards_num_spectrum_gradient(spectrum, eps=1):
         raise ValueError(f'[num_spectrum_gradient] spectrum passed as an empty array!')
 
     backward = np.roll(spectrum, eps) #lagged signal x[i-1]
-    return (spectrum - backward)/eps #backwards finite difference (x[i+1] - x[i-1])/2eps
+    return (spectrum - backward)/eps #backwards finite difference (x[i] - x[i-1])/eps
 
 def forward_num_spectrum_gradient(spectrum, eps=1):
     '''
@@ -144,7 +146,7 @@ def forward_num_spectrum_gradient(spectrum, eps=1):
         raise ValueError(f'[num_spectrum_gradient] spectrum passed as an empty array!')
 
     forward = np.roll(spectrum, -eps) #advanced signal x[i-1]
-    return (forward-spectrum)/eps #backwards finite difference (x[i+1] - x[i-1])/2eps
+    return (forward-spectrum)/eps #backwards finite difference (x[i+1] - x[i])/eps
 
 def central_num_spectrum_hessian(spectrum, eps=1):
     '''
@@ -380,7 +382,7 @@ def distance_find_peaks(data, harmonic, lower_bound_idx, upper_bound_idx, mag_th
     if lower_bound_idx == upper_bound_idx:
         raise ValueError(f'[distance_find_peaks] lower and upper boundary of the signal window must not be the same!')
     if not mag_threshold:
-        mag_threshold = -60 #set the magnitude threshold as -60dB
+        mag_threshold = -80 #set the magnitude threshold as -60dB
     if not h_threshold:
         h_threshold = 0 #set the height threshold as 0dB
     if not min_peak_dist:
@@ -400,9 +402,10 @@ def distance_find_peaks(data, harmonic, lower_bound_idx, upper_bound_idx, mag_th
     grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
 
     #Evaluate height change in the spectrum to infer local maxima
-    r_height_diff = wind_spectrum - adv_wind_spectrum #height change between peak and its right neighbor
+    #r_height_diff = wind_spectrum - adv_wind_spectrum #height change between peak and its right neighbor
     l_height_diff = wind_spectrum - lag_wind_spectrum #height change between peak and its left neighbor
-    height_mask = (l_height_diff>=h_threshold)&(r_height_diff>=h_threshold) #check for samples where the peak is greater than its neighbours by at least h_threshold
+    #height_mask = (l_height_diff>=h_threshold)&(r_height_diff>=h_threshold) #check for samples where the peak is greater than its neighbours by at least h_threshold
+    height_mask = l_height_diff >= h_threshold #check for samples where the peak is greater than its left neighbour (avoid filtering out flat peaks)
 
     #Extract the peaks
     sign_change_mask = grad_sign_change == 0  #when the first derivative changes from + to -. the sum is 0
@@ -473,7 +476,7 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
     if (type(data) == data_types.NIHardwareData)|(type(data) == data_types.LaipseData):
         data.slip = 0 #TODO: placeholder value for now!
     if not window_size:
-        window_size = 50 #window of 50 Hz around the harmonic spike
+        window_size = 20 #window of 50 Hz around the harmonic spike
     methods_available = ['distance', 'dispersion','slidingmax'] #available methods for peak finding
     if method not in methods_available:
         raise ValueError(f'[fft_significant_peaks] Method {method} no available! Try {methods_available}')
@@ -483,7 +486,7 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
             gamma = None #revert to None
             print(f'[fft_significant_peaks] Running dispersion-based peak finding without dispersion factor!')
     if not mag_threshold:
-        mag_threshold = -60 #set the magnitude threshold as -60dB
+        mag_threshold = -80 #set the magnitude threshold as -60dB
     if not h_threshold:
         h_threshold = 0 #set the height threshold as 0dB
 
@@ -499,7 +502,7 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
         smooth_fft_data_dB = None
 
     #Store the new values in a PeakFinderData structure to avoid messing with the original data
-    fofd = dsp_utils.backwards_num_spectrum_gradient(fft_data_dB, eps=1) #backwards first order finite difference
+    fofd = backwards_num_spectrum_gradient(fft_data_dB, eps=1) #backwards first order finite difference
 
     #Create the PeakFinder data structure based on the method chosen
     if method == 'dispersion':
@@ -533,25 +536,49 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
 
     return peaks_per_component
 
-def organize_peak_data(fft_peaks, loads):
+def generate_report(fft_peaks, loads, slip, fm=60, save=False):
     '''
     :param fft_peaks: the list with all the peak coordinates extracted from the detection routine
     :param loads: the list with all the loads used in the peak findings
-    :return: the data organized as a pandas dataframe with the frequency displacement value as well
+    :param slip: slip of the motor
+    :param fm: fundamental frequency [Hz] (60 Hz by default)
+    :param save: flag to save the report as .csv (False by default)
+    :return: the data organized as a pandas dataframe with: frequency and amplitude analysis + relative errors
     '''
     #Convert the all peaks list into an array per load test
     peaks_per_load = [] #list to store the arrays
     load_counter = 0
+    v = np.array([1,5])[np.newaxis,:].T #harmonic components
+    k = np.arange(-3,4,1)[np.newaxis,:] #fault orders
     for load_peaks in fft_peaks:
-        curr_peaks = np.empty((1,5)) #empty array to concatenate iteratively
+        curr_peaks = np.empty((1,7)) #empty array to concatenate iteratively
+        analytical_signature = (v+2*k*slip[load_counter])*fm #expected fault signatures location
+        harm_counter = 0
         for harm_peak in load_peaks:
             harm_idx = int(len(harm_peak[:,0])/2)  # the peak is always the middle element
             freq_disp = np.abs(harm_peak[harm_idx,0]-harm_peak[:,0]) #frequency displacement of the peak with respect to the harmonic component
             amp_diff = harm_peak[harm_idx,1]-harm_peak[:,1] #compute the difference between the harmonic component peak and all the other peaks
+            argmin_freq_diff = harm_peak[:,0][np.newaxis,:].T - analytical_signature[harm_counter,:][np.newaxis,:] #subtract every detected peak by every expected peak (analytical)
+            argmin_freq_diff = np.argmin(np.abs(argmin_freq_diff), axis=1) #find the index per line of the mininum difference
+            argmin_relative = analytical_signature[harm_counter, argmin_freq_diff] #the expected frequencies of the detected peaks
+            freq_error = 100*(np.abs(harm_peak[:,0]-argmin_relative))/argmin_relative #relative error between detected and expected frequencies
             harm_load = np.ones_like(freq_disp)*loads[load_counter] #register which load has been computed
-            curr_peaks = np.concat([curr_peaks, np.stack((harm_load, harm_peak[:,0], harm_peak[:,1], freq_disp, amp_diff), axis=0).T]) #concatenate each harmonic component peaks within the load data
-        local_frame = pd.DataFrame(curr_peaks[1:], columns=['load', 'freqs', 'fft_mags', 'freq_disp', 'amp_diff']) #append the peaks to the list
+            curr_peaks = np.concat([curr_peaks, np.stack((harm_load, harm_peak[:,0], harm_peak[:,1], freq_disp, amp_diff,
+                                                          argmin_relative, freq_error), axis=0).T]) #concatenate each harmonic component peaks within the load data
+            harm_counter += 1 #increase the harmonic counter
+        local_frame = pd.DataFrame(curr_peaks[1:], columns=['load [%]', 'freqs [Hz]', 'fft_mags [dB]', 'freq_disp [Hz]', 'amp_diff [dB]','exp. freqs [Hz]', 'relat. error [%]']) #append the peaks to the list
         peaks_per_load.append(local_frame) #save the dataframes in the global list
         load_counter += 1 #increase the load counter
 
-    return pd.concat(peaks_per_load) #concatenate all the processed dataframes into a single one
+    report = pd.concat(peaks_per_load) #concatenate all the processed dataframes into a single one
+
+    if save:
+        #create the report directory if it doesn't exist
+        if not os.path.exists('../reports'):
+            os.mkdir('../reports')
+
+        filename = f"../reports/report_{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S').replace(' ', '_').replace(':','').replace('-', '_')}.csv" #create a filename based on the time of generation
+        report.to_csv(filename, index=False)
+        print(f'[generate_report] Report saved at {filename}')
+
+    return report
