@@ -555,7 +555,7 @@ def generate_report(fft_peaks, loads, slip, fm=60, save=False):
         analytical_signature = (v+2*k*slip[load_counter])*fm #expected fault signatures location
         harm_counter = 0
         for harm_peak in load_peaks:
-            harm_idx = int(len(harm_peak[:,0])/2)  # the peak is always the middle element
+            harm_idx = np.argmin(np.abs(harm_peak[:,0]-v[harm_counter]*fm)) #the harmonic peak
             freq_disp = np.abs(harm_peak[harm_idx,0]-harm_peak[:,0]) #frequency displacement of the peak with respect to the harmonic component
             amp_diff = harm_peak[harm_idx,1]-harm_peak[:,1] #compute the difference between the harmonic component peak and all the other peaks
             argmin_freq_diff = harm_peak[:,0][np.newaxis,:].T - analytical_signature[harm_counter,:][np.newaxis,:] #subtract every detected peak by every expected peak (analytical)
