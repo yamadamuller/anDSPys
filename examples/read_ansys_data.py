@@ -29,6 +29,7 @@ except Exception as e:
     raise RuntimeError(f'[read_ansys_data] Read function failed with {e}')
 #Optional arguments:
 #-> fm: fundamental frequency (60 Hz by default)
+#-> transient: flag to filter out the transient in the signal (False by default)
 #-> normalize_by: pass which function will be used to normalize the FFT (len, np.max, ...)
 
 #The assigned variable should be a SimuData structure that compiles the most important data from the simulation as attributes

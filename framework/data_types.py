@@ -4,6 +4,7 @@ from framework import electromag_utils, dsp_utils
 from scipy.io import loadmat
 import yaml
 import datetime
+import h5py
 
 def load_config_file(config_file):
     '''
@@ -62,11 +63,85 @@ def filter_integer_period(time_samples, n_periods, fm=60):
     else:
         raise ValueError(f'[filter_integer_period] n_periods={n_periods} is invalid for the signal')
 
+def loadmat_laipse_v7_3(file, torque, exp_num, Ts, fm=60, n_periods=None, transient=False):
+    '''
+    :param file: path to the .mat output file in the local filesystem
+    :param torque: torque of the experiment to extract the data
+    :param exp_num: which experiment will be extracted from the experimental data
+    :param Ts: sampling period [s]
+    :param fm: fundamental frequency (60 Hz by default)
+    :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
+    :param transient: flag to filter out the transient in the signal (False by default)
+    :return: a list containing the arrays of every value extracted from the matlab v7.3 struct
+    '''
+    #Input arguments
+    if not os.path.isfile(file):
+        raise ValueError(f'[loadmat_laipse_v7_3] File {file} does not exist!')
+    if (float(torque)<1)|(float(torque)>4):
+        raise ValueError(f'[LaipseData] Torque value {torque} is invalid, try 1<=torque<=4 with steps of 0.5 N.m!')
+    if len(str(torque))<2:
+        torque *= 10 #multiply by ten given the dictionary namings
+        torque_str = str(torque) #convert to string to search for the file
+    else:
+        torque_str = str(torque) #convert to string to search for the file
+        torque_str = torque_str.replace('.', '') #remove the decimal notation in case torque is floating point
+
+    exp_num = int(exp_num)-1 #convert number to index (1-based to 0-based)
+    if (exp_num<0)|(exp_num>9):
+        raise ValueError(f'[LaipseData] Experiment number must lie between 1 and 10, {exp_num} is invalid!')
+
+    filter_periods = False #flag to apply integer period filtering or not
+    if n_periods is not None:
+        n_periods = int(n_periods)
+        filter_periods = True #update the flag
+
+    output_data = {} #dictionary to append every value array extracted from the matlab struct
+    keys_of_interest = ['Ia', 'Ib', 'Ic', 'Va', 'Vb', 'Vc'] #search only for timeseries regarding the given electrical values (update if needed)
+    with h5py.File(file, 'r') as f:
+        keys = [key for key in f.keys()] #extract the torque-based keys from the struct
+        for torque_data in f[keys[-1]].items(): #iterate over the keys to find the one that matches the input argument
+            if torque_data[0] == f'torque{torque_str}': #find the respective torque struct
+                for electrical_data in torque_data[1]: #iterate over the keys from the torque struct to extract the required arrays
+                    if electrical_data in keys_of_interest: #find the current values based on the keys_of_interest list
+                        curr_ev_group = torque_data[1][electrical_data] #load the current electrucal value from the struct in frame format
+                        curr_ev_group = curr_ev_group[:] #flat data
+                        curr_ev_group = curr_ev_group.flatten() #ensure flat in case of 2D data
+                        exp_counter = 0 #counter to search for the input experiment number
+                        for experiment in curr_ev_group: #iterate over the available experiments
+                            if exp_counter == exp_num:
+                                curr_exp_obj = f[experiment] #dereferenc based on the experiment number
+                                curr_exp_data = curr_exp_obj[:].T #flat and transpose the array
+
+                                #process the data as standalone to remove the transient if required
+                                t_end = (len(curr_exp_data)-1)*Ts #last timestamp based on the sampling period (assuming first sample is 0s)
+                                time_grid = np.arange(0, t_end+Ts, Ts) #timestamps given the sampling period (Ts)
+
+                                if not transient:
+                                    transient_mask = time_grid>=5 #filter up to 5s
+                                    time_grid = time_grid[transient_mask]
+                                    curr_exp_data = curr_exp_data[transient_mask]
+
+                                #extract the n integer periods if required
+                                if filter_periods:
+                                    int_period_idx = filter_integer_period(time_grid, n_periods, fm=fm) #find the index of the last sample in the defined periods
+                                    time_grid = time_grid[:int_period_idx+1]
+                                    curr_exp_data = curr_exp_data[:int_period_idx+1]
+
+                                #Add the values to the output dictionary
+                                output_data[electrical_data.lower()] = curr_exp_data[:,0] #add the current value to the dict w/ "electrical data" as the key in lowercase
+                                if 'time_grid' not in output_data.keys():
+                                    output_data['time_grid'] = time_grid #add the time grid in case it does not exist
+
+                                break
+
+                            exp_counter += 1 #increase the counter if experiment number is not yet met
+    return output_data
+
 class SimuData:
     '''
     class that stores all the required data from a finite element simulation from ANSYS
     '''
-    def __init__(self, current_data, speed_data, load_percentage, ns, fm=60, n_periods=None, normalize_by=np.max):
+    def __init__(self, current_data, speed_data, load_percentage, ns, fm=60, n_periods=None, transient=False, normalize_by=np.max):
         '''
         :param current_data: the raw csv current output file from ANSYS in numpy format
         :param speed_data: the raw csv speed output file from ANSYS in numpy format
@@ -74,6 +149,7 @@ class SimuData:
         :param ns: synchronous speed of the simulated motor [rpm]
         :param fm: fundamental frequency [Hz] (60 Hz by default)
         :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
+        :param transient: flag to filter out the transient in the signal (False by default)
         :param normalize_by: which function will be used to normalize the FFT
         '''
         #check if current_data is a numpy array
@@ -104,6 +180,12 @@ class SimuData:
             self.i_motor = self.current_data[:,1] #extract the phase current samples
             self.time_grid = self.current_data[:,0] #extract the time samples
 
+            #extract the transient if required
+            if not transient:
+                transient_mask = (self.time_grid>=1) #mask the signal from 1s
+                self.i_motor = self.i_motor[transient_mask]
+                self.time_grid = self.time_grid[transient_mask]
+
             #extract the n integer periods if required
             if filter_periods:
                 int_period_idx = filter_integer_period(self.time_grid, self.n_periods, fm=self.fm) #find the index of the last sample in the defined periods
@@ -123,6 +205,12 @@ class SimuData:
         if speed_flag:
             self.speed_motor = self.speed_data[:,1] #extract the speed samples
             self.speed_time_grid = self.speed_data[:,0] #extract the time samples
+
+            #extract the transient if required
+            if not transient:
+                transient_mask = (self.speed_time_grid >= 1) #mask the signal from 1s
+                self.speed_motor = self.speed_motor[transient_mask]
+                self.speed_time_grid = self.speed_time_grid[transient_mask]
 
             #extract the n integer periods if required
             if filter_periods:
@@ -146,40 +234,6 @@ class PeakFinderData:
             self.slip = slip #update the slip of the simulated machine
         if fm is not None:
             self.fm = fm #update the fundamental frequency of the simulated machine
-
-class LabData:
-    def __init__(self, raw_data, fm=60, normalize_by=np.max):
-        '''
-        :param raw_data: the raw .mat output file from lab controlled tests in numpy format
-        :param fm: fundamental frequency [Hz] (60 Hz by default)
-        '''
-        #check if current_data is a numpy array
-        if not isinstance(raw_data, np.ndarray):
-            raise TypeError(f'[data_types] current_data input required to be a numpy array!')
-        if len(raw_data) == 0:
-            raise ValueError(f'[data_types] current_data passed as an empty array!')
-
-        #Input arguments
-        self.raw_data = raw_data
-        self.fm = fm
-
-        #define current and time samples from the raw data
-        self.i_r = self.raw_data[:,1] #extract the R-phase current samples
-        self.i_s = self.raw_data[:,2] #extract the S-phase current samples
-        self.i_t = self.raw_data[:,3] #extract the T-phase current samples
-        self.time_grid = self.raw_data[:,0] #extract the time samples
-        self.Ts = self.time_grid[1]-self.time_grid[0] #sampling time
-        self.fs = 1/self.Ts #sampling frequency
-        self.Res = self.fs/len(self.i_r) #resolution
-
-        #compute the spectrum of the currents
-        self.fft_freqs = np.linspace(-self.fs/2, self.fs/2,len(self.i_r)) #FFT frequencies based on the sampling
-        self.fft_data_amp = dsp_utils.compute_FFT(self.i_t, normalize_by=normalize_by) #compute the FFT of the T phase
-        self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
-        self.fft_s_data_amp = dsp_utils.compute_FFT(self.i_s, normalize_by=normalize_by) #compute the FFT of the S phase
-        self.fft_s_data_dB = dsp_utils.apply_dB(self.fft_s_data_amp) #convert from amplitude to dB
-        self.fft_r_data_amp = dsp_utils.compute_FFT(self.i_r, normalize_by=normalize_by) #compute the FFT of the R phase
-        self.fft_r_data_dB = dsp_utils.apply_dB(self.fft_r_data_amp) #convert from amplitude to dB
 
 class SensorData:
     def __init__(self, raw_data, ns, fm=60, n_periods=None, transient=False, normalize_by=np.max):
@@ -243,7 +297,7 @@ class SensorData:
         self.fs = 1/self.Ts #sampling frequency
         self.Res = self.fs/len(self.i_r) #resolution
 
-        #compute the spectrum of the currents
+        #compute the spectra of the currents
         self.fft_data_amp = dsp_utils.compute_FFT(self.i_t, normalize_by=normalize_by) #compute the FFT of the T phase
         self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #convert from amplitude to dB
         self.fft_freqs = np.linspace(-self.fs/2, self.fs/2,len(self.i_r)) #FFT frequencies based on the sampling
@@ -340,3 +394,50 @@ class BatchNIHardwareData:
         for file_idx in range(len(file_list)):
             self.batch_data[file_idx] = NIHardwareData(file_list[file_idx], fm=self.fm, n_periods=n_periods, normalize_by=normalize_by) #append the data structure with the hardware output
             print(f'[BatchNIHardwareData] File {file_list[file_idx]} read!')
+
+class LaipseData:
+    def __init__(self, file, torque, fs=50e3, fm=60, n_periods=None, exp_num=1, transient=False, normalize_by=np.max):
+        '''
+        :param file: path to the .MAT output file in the local filesystem
+        :param torque: torque of the experiment to extract the data
+        :param fs: sampling frequency [Hz] (50.05 kHz by default)
+        :param fm: fundamental frequency [Hz] (60 Hz by default)
+        :param n_periods: the integer number of periods that will be extracted from the current data (None by default=all samples)
+        :param exp_num: which experiment will be extracted from the experimental data (1 by default)
+        :param transient: flag to filter out the transient (False by default->no transient)
+        :param normalize_by: which function will be used to normalize the FFT
+        '''
+        #Input arguments
+        self.file = file
+
+        if (float(torque)<1)|(float(torque)>4):
+            raise ValueError(f'[LaipseData] Torque value {torque} is invalid, try 1<=torque<=4 with steps of 0.5 N.m!')
+        self.torque = torque
+
+        self.fs = fs
+        self.Ts = 1/self.fs #sampling period
+        self.fm = fm
+
+        if n_periods is not None:
+            self.n_periods = int(n_periods)
+        else:
+            self.n_periods = n_periods
+
+        self.exp_num = int(exp_num)
+        if (self.exp_num<1)|(self.exp_num>10):
+            raise ValueError(f'[LaipseData] Experiment number must lie between 1 and 10, {exp_num} is invalid!')
+
+        raw_data = loadmat_laipse_v7_3(self.file, self.torque, self.exp_num, self.Ts, fm=self.fm, n_periods=self.n_periods, transient=transient) #load the struct(s) into memory based on the torque argument
+        self.time_grid = raw_data['time_grid'] #timesample
+        self.i_a = raw_data['ia'] #current in the A-phase
+        self.i_b = raw_data['ib'] #current in the B-phase
+        self.i_c = raw_data['ic'] #current in the C-phase
+
+        #compute the spectra of the currents
+        self.fft_freqs = np.linspace(-self.fs/2, self.fs/2, len(self.i_a)) #FFT frequencies based on the sampling
+        self.fft_data_amp = dsp_utils.compute_FFT(self.i_a, normalize_by=normalize_by) #compute the FFT of the A-phase
+        self.fft_data_dB = dsp_utils.apply_dB(self.fft_data_amp) #apply dB
+        self.fft_b_data_amp = dsp_utils.compute_FFT(self.i_b, normalize_by=normalize_by) #compute the FFT of the B-phase
+        self.fft_b_data_dB = dsp_utils.apply_dB(self.fft_b_data_amp) #apply dB
+        self.fft_c_data_amp = dsp_utils.compute_FFT(self.i_c, normalize_by=normalize_by) #compute the FFT of the C-phase
+        self.fft_c_data_dB = dsp_utils.apply_dB(self.fft_c_data_amp) #apply dB

@@ -129,39 +129,29 @@ f_sample = f_sample[indsort]
 Pm = Pm[indsort]
 mu = np.abs(mu[indsort])/np.max(np.abs(mu))
 log_mu = 20*np.log10(np.abs(mu)+1e-8)
-print(f'[VBI_offgrid_CGDP] elapsed = {time.time()-t_init}s')
-
-# sidebands
-l_band = (1 - 2 * simu_data.slip) * simu_data.fm  # left sideband
-r_band = (1 + 2 * simu_data.slip) * simu_data.fm  # right sideband
+print(f'[SBL_fault_detect] elapsed = {time.time()-t_init}s')
 
 plt.figure(1)
 plt.subplot(2,1,1)
 leg = []
 plt.plot(simu_data.fft_freqs, simu_data.fft_data_dB)
-#plt.axvline(l_band, linestyle='dotted', color='black')
-#plt.axvline(r_band, linestyle='dotted', color='black')
 plt.xlim([50,70])
 plt.ylabel('Magnitude [dB]')
 plt.xlabel('Frequency [Hz]')
 plt.title('FFT')
 #plt.legend(leg)
 plt.grid()
-
 plt.subplot(2,1,2)
 log_mu += 50
 f_sample -= fc
 leg = []
 plt.stem(f_sample, log_mu, markerfmt=" ")
-#plt.axvline(l_band, linestyle='dotted', color='black')
-#plt.axvline(r_band, linestyle='dotted', color='black')
 plt.xlim([50,70])
 plt.ylabel('Magnitude [dB]')
 plt.xlabel('Frequency [Hz]')
 plt.title('SBL')
 #plt.legend(leg)
 plt.grid()
-
 plt.show()
 
 #fault_detect
