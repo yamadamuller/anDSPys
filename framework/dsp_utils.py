@@ -407,10 +407,15 @@ def distance_find_peaks(data, harmonic, lower_bound_idx, upper_bound_idx, mag_th
     #height_mask = (l_height_diff>=h_threshold)&(r_height_diff>=h_threshold) #check for samples where the peak is greater than its neighbours by at least h_threshold
     height_mask = l_height_diff >= h_threshold #check for samples where the peak is greater than its left neighbour (avoid filtering out flat peaks)
 
+    sign_change_mask = np.zeros((len(grad_sign),), dtype=bool)
+    for i in range(len(grad_sign)-1):
+        if grad_sign[i]==1. and grad_sign[i+1]==-1.:
+            sign_change_mask[i] = True
+
     #Extract the peaks
-    sign_change_mask = grad_sign_change == 0  #when the first derivative changes from + to -. the sum is 0
+    #sign_change_mask = grad_sign_change == 0  #when the first derivative changes from + to -. the sum is 0
     mag_thresh_mask = wind_spectrum >= mag_threshold  #values of the FFT that surpass the magnitude threshold
-    sign_change_mask = sign_change_mask & mag_thresh_mask & height_mask  #update the mask where all prior masks are valid
+    sign_change_mask = sign_change_mask & mag_thresh_mask & height_mask #update the mask where all prior masks are valid
     raw_peaks = wind_spectrum[sign_change_mask]  #every peak magnitude detected by the change of signal in the gradient
     raw_freq_peaks = wind_freqs[sign_change_mask]  #every peak frequency detected by the change of signal in the gradient
     peaks = np.stack((raw_freq_peaks, raw_peaks), axis=1) #stack the peaks as [freqs, coordinates]
@@ -473,10 +478,10 @@ def fft_significant_peaks(data, harm_components, window_size=None, method='dista
             (type(data) != data_types.NIHardwareData) &
             (type(data) != data_types.LaipseData)):
         raise TypeError(f'[fft_peak_finder] data input must be a SimuData/SensorData/NIHardwareData/LaipseData object!')
-    if (type(data) == data_types.NIHardwareData)|(type(data) == data_types.LaipseData):
+    if type(data) == data_types.NIHardwareData:
         data.slip = 0 #TODO: placeholder value for now!
     if not window_size:
-        window_size = 20 #window of 50 Hz around the harmonic spike
+        window_size = 20 #window of 20 Hz around the harmonic spike
     methods_available = ['distance', 'dispersion','slidingmax'] #available methods for peak finding
     if method not in methods_available:
         raise ValueError(f'[fft_significant_peaks] Method {method} no available! Try {methods_available}')

@@ -1,5 +1,6 @@
 sensor-configs:
-  current_relation: 11 #output voltage/input current relation
+  current_relation: 10 #output voltage/input current relation
+  voltage_relation: 88 #output voltage/input current relation
 
 motor-configs:
   fm: 60 #fundamental frequency
