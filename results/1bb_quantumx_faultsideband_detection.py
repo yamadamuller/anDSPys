@@ -24,7 +24,7 @@ for load in loads:
     slips.append(data.slip)
 
     t_init = time.time()
-    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-80, h_threshold=1.09) #run the peak detection routine
+    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-80, h_threshold=1.1534) #run the peak detection routine
     proc_times.append(time.time() - t_init)
     all_peaks.append(peaks) #store the peaks
 
