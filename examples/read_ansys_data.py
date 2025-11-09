@@ -1,5 +1,5 @@
 '''
-This is an example file to guide on processing ANSYS output data into the anDSPys framework.
+This is an example file to guide on processing ANSYS output data into the DSP4IM framework.
 '''
 
 #import the minimum required packages
@@ -19,7 +19,7 @@ ns = int(config_file["motor-configs"]["ns"]) #synchronous speed
 
 #The function responsible for loading the .csv data output from ANSYS belongs to the file_csv package.
 #Call it with the required arguments and store the output into a variable.
-data_directory = '../data/1_broken_bar' #define the directory where your .csv data is located
+data_directory = '../data/1_broken_bar_18082025' #define the directory where your .csv data is located
 load = 100 #define which simulation you want to load based on the load percentage
 n_periods = 600 #define how many peroids will be extracted from the current signal
 #For more information on how to format the data, see the README file in the "Running the framework" section

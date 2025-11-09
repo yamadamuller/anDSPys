@@ -1,5 +1,5 @@
 '''
-This is an example file to guide on processing NI hardware output data into the anDSPys framework.
+This is an example file to guide on processing NI hardware output data into the DSP4IM framework.
 '''
 
 #import the minimum required packages
@@ -32,7 +32,7 @@ except Exception as e:
 if type(data) == data_types.NIHardwareData:
     print(type(data))
 else:
-    raise TypeError(f'[read_NI_data] The variable is not a SensorData structure, data type = {type(data)}!')
+    raise TypeError(f'[read_NI_data] The variable is not a NIHardwareData structure, data type = {type(data)}!')
 #For more information on the NIHardwareData structure, see the "../framework/data_types.py" script
 
 #You may now access the structure's attributes to process your data into the framework.

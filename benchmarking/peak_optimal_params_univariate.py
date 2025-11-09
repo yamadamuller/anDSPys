@@ -29,7 +29,7 @@ for tol in range(len(tols)):
     t_gs[tol] = np.mean(runtime) #store for the tolerance the average of 10 computations
 
 for tol in range(len(tols)):
-    runtime = np.zeros((1, 1))  # array to store 10 elapsed times
+    runtime = np.zeros((1, 1))  #array to store 10 elapsed times
     for i in range(len(runtime)):
         t_init = time.time()
         opt_height = parameter_estimation.univariate_gss_estimator(data, harm_comps, [0,3], tol=tols[tol])

@@ -399,7 +399,7 @@ def distance_find_peaks(data, harmonic, lower_bound_idx, upper_bound_idx, mag_th
 
     #Evaluate signal change in the first derivative to infer local maxima
     grad_sign = np.sign(wind_grad) #compute the signs of each value of the first derivative
-    grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
+    #grad_sign_change = np.roll(grad_sign,-1)+grad_sign #signs[i+1]-signs[i]
 
     #Evaluate height change in the spectrum to infer local maxima
     #r_height_diff = wind_spectrum - adv_wind_spectrum #height change between peak and its right neighbor
