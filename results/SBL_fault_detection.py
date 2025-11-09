@@ -7,8 +7,12 @@ import matplotlib.pyplot as plt
 from framework import file_csv
 import time
 
-#data = loadmat('../data/ia.mat')['ia'].squeeze() #load the current data into numpy array
-simu_dir = "../data/1_broken_bar_03082025/i_phase/noR"  #path to the directory with the simulation data
+#M. Ma, Z. Cao, H. Fu, W. Xu and J. Dai,
+#"Sparse Bayesian Learning Approach for Broken Rotor Bar Fault Diagnosis"
+#IEEE Transactions on Instrumentation and Measurement, vol. 72, pp. 1-10, 2023
+#doi: 10.1109/TIM.2023.3303505.
+
+simu_dir = "../data/1_broken_bar_18082025"  #path to the directory with the simulation data
 simu_data = file_csv.read(simu_dir, 100, 1800, fm=60, n_periods=600, normalize_by=np.max) #read the simulation data
 data = simu_data.i_motor
 

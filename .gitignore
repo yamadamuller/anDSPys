@@ -209,9 +209,3 @@ __marimo__/
 #data directory
 data/
 reports/
-1bb_NI_faultsideband_detection.py
-test_labtest_peak_finder.py
-test_dispersion_peak_finder.py
-test_distance_peak_finder.py
-test_fault_detection.py
-1bb_laipse_faultsideband_detection.py

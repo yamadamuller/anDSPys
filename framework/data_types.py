@@ -274,9 +274,9 @@ class SensorData:
         self.i_r = int(config_file["sensor-configs"]["current_relation"])*self.raw_data["Channel_5_Data"][self.transient_mask] #extract the R-phase current samples
         self.i_s = int(config_file["sensor-configs"]["current_relation"])*self.raw_data["Channel_6_Data"][self.transient_mask] #extract the S-phase current samples
         self.i_t = int(config_file["sensor-configs"]["current_relation"])*self.raw_data["Channel_7_Data"][self.transient_mask] #extract the T-phase current samples
-        self.v_r = self.raw_data["Channel_2_Data"][self.transient_mask] #extract the R-phase voltage samples
-        self.v_s = self.raw_data["Channel_3_Data"][self.transient_mask] #extract the S-phase voltage samples
-        self.v_t = self.raw_data["Channel_4_Data"][self.transient_mask] #extract the T-phase voltage samples
+        self.v_r = int(config_file["sensor-configs"]["voltage_relation"])*self.raw_data["Channel_2_Data"][self.transient_mask] #extract the R-phase voltage samples
+        self.v_s = int(config_file["sensor-configs"]["voltage_relation"])*self.raw_data["Channel_3_Data"][self.transient_mask] #extract the S-phase voltage samples
+        self.v_t = int(config_file["sensor-configs"]["voltage_relation"])*self.raw_data["Channel_4_Data"][self.transient_mask] #extract the T-phase voltage samples
         self.torque = self.raw_data["Channel_8_Data"][self.transient_mask] #extract the torque samples
         self.speed_motor = self.raw_data["Channel_9_Data"][self.transient_mask] #extract the speed samples
 

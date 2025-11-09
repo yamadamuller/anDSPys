@@ -1,4 +1,4 @@
-from framework import file_sensor_mat, dsp_utils, data_types
+from framework import file_sensor_mat, dsp_utils, data_types, parameter_estimation
 import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')
@@ -20,11 +20,13 @@ proc_times = [] #list to append processing times per data
 all_peaks = [] #list to append all peaks registered along the loads
 slips = [] #list to append the slips for the load-dependent analysis
 for load in loads:
-    data = file_sensor_mat.read(directory, load, ns, fm=fm, n_periods=1400, normalize_by=np.max) #organize the output in a SimuData structure
+    data = file_sensor_mat.read(directory, load, ns, fm=fm, n_periods=1550, normalize_by=np.max) #organize the output in a SimuData structure
     slips.append(data.slip)
 
+    #Sideband detection
+    opt_height = parameter_estimation.univariate_gss_estimator(data, harm_comps, [0, 3], 1e-3) #find the optimal h_threshold
     t_init = time.time()
-    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-90, h_threshold=2) #run the peak detection routine
+    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-80, h_threshold=opt_height.opt_value) #run the peak detection routine
     proc_times.append(time.time() - t_init)
     all_peaks.append(peaks) #store the peaks
 
@@ -36,10 +38,9 @@ for load in loads:
     plt.figure(fig_counter)
     plt.subplot(2, 1, 1)
     plt.plot(data.fft_freqs, data.fft_data_dB)
-    leg.append(f'{directory.split("/")[-2]}')
+    leg.append(f'Current spectrum')
     plt.scatter(peaks[0][:, 0], peaks[0][:, 1], marker='x', color='red')
-    leg.append(f'significant peaks at {harm_comps[0] * data.fm} Hz')
-    plt.title(f'Load percentage = {load}%')
+    leg.append(f'significant peaks at {harm_comps[1] * data.fm} Hz')
     plt.ylabel('Amplitude FFT [dB]')
     plt.axvline(l_band[0], linestyle='dotted', color='black')
     plt.axvline(r_band[0], linestyle='dotted', color='black')
@@ -64,6 +65,7 @@ for load in loads:
     plt.axvline(r_band[1] + 2 * data.slip * fm, linestyle='dotted', color='black')
     plt.axvline(l_band[1] - 4 * data.slip * fm, linestyle='dotted', color='black')
     plt.axvline(r_band[1] + 4 * data.slip * fm, linestyle='dotted', color='black')
+    plt.xlabel('Frequency [Hz]')
     plt.legend(leg)
     plt.xlim([int(5 * fm) - int(wind_size / 2), int(5 * fm) + int(wind_size / 2)])
     plt.grid()
@@ -72,4 +74,4 @@ for load in loads:
 
 print(f'Average computing time for peak detection algorithm = {np.mean(proc_times)}s')
 
-report = dsp_utils.generate_report(all_peaks, loads, slips) #organize the output in a dataframe
+report = dsp_utils.generate_report(all_peaks, loads, slips, save=True) #organize the output in a dataframe

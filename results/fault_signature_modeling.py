@@ -74,7 +74,7 @@ for period in int_periods:
 
   #plot
   plt.plot(fft_freqs, fft)
-  leg.append(f'n_periods = {period}')
+  leg.append(f'{period} periods')
 
 plt.axvline((1-2*0.02)*60, linestyle='dotted', color='black')
 plt.axvline((1+2*0.02)*60, linestyle='dotted', color='black')

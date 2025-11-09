@@ -1,4 +1,4 @@
-from framework import file_csv, dsp_utils, data_types
+from framework import file_csv, dsp_utils, data_types, parameter_estimation
 import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')
@@ -21,12 +21,13 @@ proc_times = [] #list to append processing times per data
 all_peaks = [] #list to append all peaks registered along the loads
 slips = [] #list to append the slips for the load-dependent analysis
 for load in loads:
-    data_healthy = file_csv.read(healthy_directory, load, ns, fm=fm, n_periods=600, normalize_by=np.max) #organize the healthy output in a SimuData structure
-    data = file_csv.read(directory, load, ns, fm, normalize_by=np.max) #organize the output in a SimuData structure
+    data = file_csv.read(directory, loads[0], ns, fm, normalize_by=np.max) #organize the output in a SimuData structure
     slips.append(data.slip)
 
+    #Sideband detection
+    opt_height = parameter_estimation.univariate_gss_estimator(data, harm_comps, [0, 3], 1e-3) #find the optimal h_threshold
     t_init = time.time()
-    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-70, h_threshold=3) #run the peak detection routine
+    peaks = dsp_utils.fft_significant_peaks(data, harm_comps, method='distance', mag_threshold=-80, h_threshold=opt_height.opt_value) #run the peak detection routine
     proc_times.append(time.time() - t_init)
     all_peaks.append(peaks) #store the peaks
 
@@ -35,13 +36,13 @@ for load in loads:
     r_band = (harm_comps+2*data.slip)*fm #right sideband
 
     leg = []
-    plt.figure(fig_counter)
+    plt.figure(1)
     plt.subplot(2,1,1)
     plt.plot(data.fft_freqs, data.fft_data_dB)
     leg.append(f'{directory.split("/")[-2]}')
     plt.scatter(peaks[0][:,0], peaks[0][:,1], marker='x', color='red')
     leg.append(f'significant peaks at {harm_comps[0]*data.fm} Hz')
-    plt.title(f'Load percentage = {load}%')
+    plt.title(f'Load percentage = {loads[0]}%')
     plt.ylabel('Amplitude FFT [dB]')
     plt.axvline(l_band[0], linestyle='dotted', color='black')
     plt.axvline(r_band[0], linestyle='dotted', color='black')
@@ -72,6 +73,6 @@ for load in loads:
 
     fig_counter += 1  # increase the figure counter
 
-print(f'Average computing time for peak detection algorithm = {np.mean(proc_times)}s')
+print(f'Computing time for peak detection algorithm = {np.mean(proc_times)}s')
 
-report = dsp_utils.generate_report(all_peaks, loads, slips) #organize the output in a dataframe
+report = dsp_utils.generate_report(all_peaks, loads, slips, save=True) #organize the output in a dataframe

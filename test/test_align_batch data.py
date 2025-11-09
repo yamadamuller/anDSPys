@@ -20,6 +20,9 @@ for i in np.arange(1,11,1):
     placeholder_grid = data.time_grid+time_disp
     plt.plot(placeholder_grid, data.i_t)
     leg.append(f'Exp. {i}')
+
 plt.xlim([6.66, 6.82])
+plt.ylim([-5, 5])
 plt.legend(leg)
+plt.grid()
 plt.show()
