@@ -105,16 +105,16 @@ In-depth guides of the available methods are available at the [examples](https:/
 - **LaipseData**: https://github.com/ceciliapag/DSP4IM/blob/main/examples/read_LAIPSE_data.py
 
 # Related works
-- **Nascimento, P. C.** (2025). Development of electromagnetic models of induction motors with broken rotor bars. \[Master's Dissertation\, Programa de Pós-Graduação em Sistemas de Energia - Universidade Tecnológica Federal do Paraná]
+- **Nascimento, C. P.** (2025). Development of electromagnetic models of induction motors with broken rotor bars. \[Master's Dissertation\, Programa de Pós-Graduação em Sistemas de Energia - Universidade Tecnológica Federal do Paraná]
 - **Gremonini, L.** (2025). Modelagem Numérica de um Motor de Indução Trifásico Aplicado Ao Diagnóstico de Defeitos em Barras de Rotor e Enrolamentos de Armadura. \[Master's Dissertation\, Programa de Pós-Graduação em Sistemas de Energia - Universidade Tecnológica Federal do Paraná]
 
 # DSP4IM collaborators
-- Bruno Akihiro Tanno Iamamura
-- Cecilia Pagnozzi do Nascimento
-- Lucas Gremonini
-- Mateus Yamada Müller
-- Narco Afonso Ravazzoli Maciejewski
-- Thiago de Paula Machado Bazzo
+- [Bruno Akihiro Tanno Iamamura](http://lattes.cnpq.br/9326110132754585)
+- [Cecilia Pagnozzi do Nascimento](http://lattes.cnpq.br/2249597768530579)
+- [Lucas Gremonini](http://lattes.cnpq.br/9893193575782527)
+- [Mateus Yamada Müller](http://lattes.cnpq.br/9256538421307823)
+- [Narco Afonso Ravazzoli Maciejewski](http://lattes.cnpq.br/9214991739582650)
+- [Thiago de Paula Machado Bazzo](http://lattes.cnpq.br/6077469077785397)
 
 # Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
